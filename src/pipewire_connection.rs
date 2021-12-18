@@ -109,8 +109,8 @@ fn handle_node(
     // Get the nicest possible name for the node, using a fallback chain of possible name attributes.
     let name = String::from(
         props
-            .get("node.nick")
-            .or_else(|| props.get("node.description"))
+            .get("node.description")
+            .or_else(|| props.get("node.nick"))
             .or_else(|| props.get("node.name"))
             .unwrap_or_default(),
     );
