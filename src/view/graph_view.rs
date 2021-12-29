@@ -307,52 +307,46 @@ impl GraphView {
 
         let node_ident = node.get_ident().unwrap_or_default();
         let mut positions = private.positions.borrow_mut();
-        if positions.contains_key(&node_ident) {
-            let position = positions.get(&node_ident).unwrap().to_owned();
-            log::debug!(
-                "Restoring node position for {}: {}, {}",
-                node_ident,
-                position.0,
-                position.1
-            );
-            self.move_node(&node.clone().upcast(), position.0, position.1);
-        } else {
-            // Place widgets in colums of 3, growing down
-            let x = if let Some(node_type) = node_type {
-                match node_type {
-                    NodeType::Output => 20.0,
-                    NodeType::Input => 820.0,
-                }
-            } else {
-                420.0
-            };
 
-            let y = private
-                .nodes
-                .borrow()
-                .values()
-                .filter_map(|node| {
-                    // Map nodes to locations, discard nodes without location
-                    self.get_node_position(&node.clone().upcast())
-                })
-                .filter(|(x2, _)| {
-                    // Only look for other nodes that have a similar x coordinate
-                    (x - x2).abs() < 50.0
-                })
-                .max_by(|y1, y2| {
-                    // Get max in column
-                    y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
-                })
-                .map_or(20_f32, |(_x, y)| y + 100.0);
-            log::debug!(
-                "Using automatic positioning for {}: {}, {}",
-                node_ident,
+        let x = if let Some(node_type) = node_type {
+            match node_type {
+                NodeType::Output => 20.0,
+                NodeType::Input => 820.0,
+            }
+        } else {
+            420.0
+        };
+        let position = positions
+            .entry(node_ident.to_owned())
+            .or_insert((
+                // X
                 x,
-                y
-            );
-            self.move_node(&node.clone().upcast(), x, y);
-            positions.insert(node_ident, (x, y));
-        }
+                // Y
+                private
+                    .nodes
+                    .borrow()
+                    .values()
+                    .filter_map(|node| {
+                        // Map nodes to locations, discard nodes without location
+                        self.get_node_position(&node.clone().upcast())
+                    })
+                    .filter(|(x2, _)| {
+                        // Only look for other nodes that have a similar x coordinate
+                        (x - x2).abs() < 50.0
+                    })
+                    .max_by(|y1, y2| {
+                        // Get max in column
+                        y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
+                    })
+                    .map_or(20_f32, |(_x, y)| y + 100.0)
+            ));
+        log::debug!(
+            "Initial node position for {}: {}, {}",
+            node_ident,
+            position.0,
+            position.1
+        );
+        self.move_node(&node.clone().upcast(), position.0, position.1);
 
         private.nodes.borrow_mut().insert(id, node);
     }
