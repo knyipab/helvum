@@ -1,7 +1,7 @@
 project(
   'helvum',
   'rust',
-  version: '0.3.1',
+  version: '0.3.2',
   license: 'GPL-3.0',
   meson_version: '>=0.50.0'
 )
@@ -9,16 +9,11 @@ project(
 base_id = 'org.freedesktop.ryuukyu.Helvum'
 
 dependency('glib-2.0', version: '>= 2.48')
-dependency('gtk4',     version: '>= 4.0.0')
+dependency('gtk4',     version: '>= 4.4.0')
 dependency('libpipewire-0.3')
 
-rust_version = meson.get_compiler('rust').version()
-min_rust_version = '1.54.0'
-if rust_version < min_rust_version
-  error('Rust version too old: Required version is ' + min_rust_version + ' but actual version is ' + rust_version)
-endif
-
 desktop_file_validate = find_program('desktop-file-validate', required: false)
+appstream_util = find_program('appstream-util', required: false)
 cargo = find_program('cargo', required: true)
 cargo_script = find_program('build-aux/cargo.sh')
 
@@ -26,6 +21,12 @@ prefix = get_option('prefix')
 bindir = prefix / get_option('bindir')
 datadir = prefix / get_option('datadir')
 iconsdir = datadir / 'icons'
+
+meson.add_dist_script(
+  'build-aux/dist-vendor.sh',
+  meson.build_root() / 'meson-dist' / meson.project_name() + '-' + meson.project_version(),
+  meson.source_root()
+)
 
 cargo_sources = files(
   'Cargo.toml',

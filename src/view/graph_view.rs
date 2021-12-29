@@ -59,6 +59,7 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             // The layout manager determines how child widgets are laid out.
             klass.set_layout_manager_type::<gtk::FixedLayout>();
+            klass.set_css_name("graphview");
         }
     }
 
@@ -143,23 +144,12 @@ mod imp {
             Try to use relative units (em) and colours from the theme as much as possible. */
 
             let alloc = widget.allocation();
+            let widget_bounds =
+                graphene::Rect::new(0.0, 0.0, alloc.width as f32, alloc.height as f32);
 
             let background_cr = snapshot
-                .append_cairo(&graphene::Rect::new(
-                    0.0,
-                    0.0,
-                    alloc.width as f32,
-                    alloc.height as f32,
-                ))
+                .append_cairo(&widget_bounds)
                 .expect("Failed to get cairo context");
-
-            // Try to replace the background color with a darker one from the theme.
-            if let Some(rgba) = widget.style_context().lookup_color("text_view_bg") {
-                background_cr.set_source_rgb(rgba.red.into(), rgba.green.into(), rgba.blue.into());
-                if let Err(e) = background_cr.paint() {
-                    warn!("Failed to paint graphview background: {}", e);
-                };
-            } // TODO: else log colour not found
 
             // Draw a nice grid on the background.
             background_cr.set_source_rgb(0.18, 0.18, 0.18);
@@ -195,8 +185,25 @@ mod imp {
                     alloc.height as f32,
                 ))
                 .expect("Failed to get cairo context");
+
             link_cr.set_line_width(2.0);
-            link_cr.set_source_rgb(0.0, 0.0, 0.0);
+
+            let gtk::gdk::RGBA {
+                red,
+                green,
+                blue,
+                alpha,
+            } = widget
+                .style_context()
+                .lookup_color("graphview-link")
+                .unwrap_or(gtk::gdk::RGBA {
+                    red: 0.0,
+                    green: 0.0,
+                    blue: 0.0,
+                    alpha: 0.0,
+                });
+            link_cr.set_source_rgba(red.into(), green.into(), blue.into(), alpha.into());
+
             for (link, active) in self.links.borrow().values() {
                 if let Some((from_x, from_y, to_x, to_y)) = self.get_link_coordinates(link) {
                     link_cr.move_to(from_x, from_y);
