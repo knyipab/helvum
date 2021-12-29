@@ -415,7 +415,7 @@ impl GraphView {
     pub fn read_node_positions(&self) {
         let private = imp::GraphView::from_instance(self);
         let config_home = var("XDG_CONFIG_HOME")
-            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home)))
+            .or_else(|_| var("HOME").map(|home| format!("{}/.helvum_positions", home)))
             .unwrap();
         let config_meta = r#fs::metadata(config_home.to_owned());
         if config_meta.is_ok() && config_meta.unwrap().is_file() {
@@ -429,7 +429,7 @@ impl GraphView {
     pub fn write_node_positions(&self) {
         let private = imp::GraphView::from_instance(self);
         let config_home = var("XDG_CONFIG_HOME")
-            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home)))
+            .or_else(|_| var("HOME").map(|home| format!("{}/.helvum_positions", home)))
             .unwrap();
         log::debug!("Write node positions: {}", config_home);
         let mut file = File::create(config_home).unwrap();
