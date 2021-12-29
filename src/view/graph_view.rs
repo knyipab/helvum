@@ -316,30 +316,28 @@ impl GraphView {
         } else {
             420.0
         };
-        let position = positions
-            .entry(node_ident.to_owned())
-            .or_insert((
-                // X
-                x,
-                // Y
-                private
-                    .nodes
-                    .borrow()
-                    .values()
-                    .filter_map(|node| {
-                        // Map nodes to locations, discard nodes without location
-                        self.get_node_position(&node.clone().upcast())
-                    })
-                    .filter(|(x2, _)| {
-                        // Only look for other nodes that have a similar x coordinate
-                        (x - x2).abs() < 50.0
-                    })
-                    .max_by(|y1, y2| {
-                        // Get max in column
-                        y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
-                    })
-                    .map_or(20_f32, |(_x, y)| y + 100.0)
-            ));
+        let position = positions.entry(node_ident.to_owned()).or_insert((
+            // X
+            x,
+            // Y
+            private
+                .nodes
+                .borrow()
+                .values()
+                .filter_map(|node| {
+                    // Map nodes to locations, discard nodes without location
+                    self.get_node_position(&node.clone().upcast())
+                })
+                .filter(|(x2, _)| {
+                    // Only look for other nodes that have a similar x coordinate
+                    (x - x2).abs() < 50.0
+                })
+                .max_by(|y1, y2| {
+                    // Get max in column
+                    y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
+                })
+                .map_or(20_f32, |(_x, y)| y + 100.0)
+        ));
         log::debug!(
             "Initial node position for {}: {}, {}",
             node_ident,
