@@ -309,7 +309,12 @@ impl GraphView {
         let mut positions = private.positions.borrow_mut();
         if positions.contains_key(&node_ident) {
             let position = positions.get(&node_ident).unwrap().to_owned();
-            log::debug!("Restoring node position for {}: {}, {}", node_ident, position.0, position.1);
+            log::debug!(
+                "Restoring node position for {}: {}, {}",
+                node_ident,
+                position.0,
+                position.1
+            );
             self.move_node(&node.clone().upcast(), position.0, position.1);
         } else {
             // Place widgets in colums of 3, growing down
@@ -339,7 +344,12 @@ impl GraphView {
                     y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
                 })
                 .map_or(20_f32, |(_x, y)| y + 100.0);
-            log::debug!("Using automatic positioning for {}: {}, {}", node_ident, x, y);
+            log::debug!(
+                "Using automatic positioning for {}: {}, {}",
+                node_ident,
+                x,
+                y
+            );
             self.move_node(&node.clone().upcast(), x, y);
             positions.insert(node_ident, (x, y));
         }

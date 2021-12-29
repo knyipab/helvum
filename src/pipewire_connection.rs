@@ -156,7 +156,11 @@ fn handle_node(
     );
 
     // Get the client
-    let client_id: u32 = props.get("client.id").unwrap_or_default().parse().unwrap_or(0);
+    let client_id: u32 = props
+        .get("client.id")
+        .unwrap_or_default()
+        .parse()
+        .unwrap_or(0);
     let client_name = if let Some(Item::Client { name, .. }) = state.borrow_mut().get(client_id) {
         name.to_owned()
     } else {
@@ -188,7 +192,8 @@ fn handle_node(
     };
 
     // Get a (most likely) unique name that can be used to store the nodes position
-    let ident = format!("{}::{}::{}::{}",
+    let ident = format!(
+        "{}::{}::{}::{}",
         props.get("media.class").unwrap_or("Unknown"),
         client_name,
         name,
