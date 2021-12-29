@@ -127,10 +127,12 @@ impl Application {
                 @weak app => @default-return Continue(true),
                 move |msg| {
                     match msg {
-                        PipewireMessage::NodeAdded{ id, name, node_type } => app.add_node(id, name.as_str(), node_type),
+                        PipewireMessage::ClientAdded{ id, name } => app.add_client(id, name.as_str()),
+                        PipewireMessage::NodeAdded{ id, name, ident, node_type } => app.add_node(id, name.as_str(), ident.as_str(), node_type),
                         PipewireMessage::PortAdded{ id, node_id, name, direction, media_type } => app.add_port(id, name.as_str(), node_id, direction, media_type),
                         PipewireMessage::LinkAdded{ id, node_from, port_from, node_to, port_to, active} => app.add_link(id, node_from, port_from, node_to, port_to, active),
                         PipewireMessage::LinkStateChanged { id, active } => app.link_state_changed(id, active), // TODO
+                        PipewireMessage::ClientRemoved { id } => app.remove_client(id),
                         PipewireMessage::NodeRemoved { id } => app.remove_node(id),
                         PipewireMessage::PortRemoved { id, node_id } => app.remove_port(id, node_id),
                         PipewireMessage::LinkRemoved { id } => app.remove_link(id)
@@ -143,13 +145,17 @@ impl Application {
         app
     }
 
+    fn add_client(&self, id: u32, _name: &str) {
+        info!("New client: id {}", id);
+    }
+
     /// Add a new node to the view.
-    fn add_node(&self, id: u32, name: &str, node_type: Option<NodeType>) {
-        info!("Adding node to graph: id {}", id);
+    fn add_node(&self, id: u32, name: &str, ident: &str, node_type: Option<NodeType>) {
+        info!("Adding node to graph: id {}, ident {}", id, ident);
 
         imp::Application::from_instance(self).graphview.add_node(
             id,
-            view::Node::new(name),
+            view::Node::new(name, ident),
             node_type,
         );
     }
@@ -235,6 +241,11 @@ impl Application {
         sender
             .send(GtkMessage::ToggleLink { port_from, port_to })
             .expect("Failed to send message");
+    }
+
+    /// Remove the node with the specified id from the view.
+    fn remove_client(&self, id: u32) {
+        info!("Client gone: id {}", id);
     }
 
     /// Remove the node with the specified id from the view.

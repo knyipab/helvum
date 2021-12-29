@@ -69,6 +69,7 @@ pub(super) fn thread_main(
         .add_listener_local()
         .global(clone!(@strong gtk_sender, @weak registry, @strong proxies, @strong state =>
             move |global| match global.type_ {
+                ObjectType::Client => handle_client(global, &gtk_sender, &state),
                 ObjectType::Node => handle_node(global, &gtk_sender, &state),
                 ObjectType::Port => handle_port(global, &gtk_sender, &state),
                 ObjectType::Link => handle_link(global, &gtk_sender, &registry, &proxies, &state),
@@ -80,6 +81,7 @@ pub(super) fn thread_main(
         .global_remove(clone!(@strong proxies, @strong state => move |id| {
             if let Some(item) = state.borrow_mut().remove(id) {
                 gtk_sender.send(match item {
+                    Item::Client { .. } => PipewireMessage::ClientRemoved {id},
                     Item::Node { .. } => PipewireMessage::NodeRemoved {id},
                     Item::Port { node_id } => PipewireMessage::PortRemoved {id, node_id},
                     Item::Link { .. } => PipewireMessage::LinkRemoved {id},
@@ -96,6 +98,41 @@ pub(super) fn thread_main(
         .register();
 
     mainloop.run();
+}
+
+/// Handle a new client being added
+fn handle_client(
+    client: &GlobalObject<ForeignDict>,
+    sender: &glib::Sender<PipewireMessage>,
+    state: &Rc<RefCell<State>>,
+) {
+    let props = client
+        .props
+        .as_ref()
+        .expect("Node object is missing properties");
+
+    // Get the nicest possible name for the node, using a fallback chain of possible name attributes.
+    let name = String::from(
+        props
+            .get("application.name")
+            .or_else(|| props.get("application.process.binary"))
+            .unwrap_or_default(),
+    );
+
+    state.borrow_mut().insert(
+        client.id,
+        Item::Client {
+            // widget: node_widget,
+            name: name.clone(),
+        },
+    );
+
+    sender
+        .send(PipewireMessage::ClientAdded {
+            id: client.id,
+            name,
+        })
+        .expect("Failed to send message");
 }
 
 /// Handle a new node being added
@@ -117,6 +154,15 @@ fn handle_node(
             .or_else(|| props.get("node.name"))
             .unwrap_or_default(),
     );
+
+    // Get the client
+    let client_id: u32 = props.get("client.id").unwrap_or_default().parse().unwrap_or(0);
+    let client_name = if let Some(Item::Client { name, .. }) = state.borrow_mut().get(client_id) {
+        name.to_owned()
+    } else {
+        warn!("Client not found for Node {}", node.id);
+        String::from("ClientNotFound")
+    };
 
     // FIXME: Instead of checking these props, the "EnumFormat" parameter should be checked instead.
     let media_type = props.get("media.class").and_then(|class| {
@@ -141,6 +187,15 @@ fn handle_node(
         }
     };
 
+    // Get a (most likely) unique name that can be used to store the nodes position
+    let ident = format!("{}::{}::{}::{}",
+        props.get("media.class").unwrap_or("Unknown"),
+        client_name,
+        name,
+        props.get("object.path").unwrap_or("other")
+    );
+    debug!("Node id {} has ident {}", node.id, ident);
+
     let node_type = props
         .get("media.category")
         .and_then(|class| {
@@ -164,6 +219,7 @@ fn handle_node(
         .send(PipewireMessage::NodeAdded {
             id: node.id,
             name,
+            ident,
             node_type,
         })
         .expect("Failed to send message");

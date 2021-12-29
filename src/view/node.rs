@@ -33,6 +33,7 @@ mod imp {
         pub(super) ports: RefCell<HashMap<u32, crate::view::port::Port>>,
         pub(super) num_ports_in: Cell<i32>,
         pub(super) num_ports_out: Cell<i32>,
+        pub(super) ident: RefCell<String>,
     }
 
     #[glib::object_subclass]
@@ -60,6 +61,7 @@ mod imp {
                 ports: RefCell::new(HashMap::new()),
                 num_ports_in: Cell::new(0),
                 num_ports_out: Cell::new(0),
+                ident: RefCell::new( String::from("UnknownNode") ),
             }
         }
     }
@@ -84,11 +86,12 @@ glib::wrapper! {
 }
 
 impl Node {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, ident: &str) -> Self {
         let res: Self = glib::Object::new(&[]).expect("Failed to create Node");
         let private = imp::Node::from_instance(&res);
 
         private.label.set_text(name);
+        private.ident.replace( String::from(ident) );
 
         res
     }
@@ -129,5 +132,10 @@ impl Node {
 
             port.unparent();
         }
+    }
+
+    pub fn get_ident(&self) -> Option<String> {
+        let private = imp::Node::from_instance(self);
+        Some(String::from(private.ident.borrow().as_str()))
     }
 }

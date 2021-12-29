@@ -24,6 +24,10 @@ use crate::MediaType;
 /// Any pipewire item we need to keep track of.
 /// These will be saved in the `State` struct associated with their id.
 pub(super) enum Item {
+    Client {
+        // Keep track of the nodes media type to color ports on it.
+        name: String,
+    },
     Node {
         // Keep track of the nodes media type to color ports on it.
         media_type: Option<MediaType>,

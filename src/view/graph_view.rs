@@ -28,6 +28,9 @@ use gtk::{
 use log::{error, warn};
 
 use std::{cmp::Ordering, collections::HashMap};
+use std::env::var;
+use std::fs::{self, File};
+use std::io::Write;
 
 use crate::NodeType;
 
@@ -43,6 +46,8 @@ mod imp {
         pub(super) nodes: RefCell<HashMap<u32, Node>>,
         /// Stores the link and whether it is currently active.
         pub(super) links: RefCell<HashMap<u32, (crate::PipewireLink, bool)>>,
+        /// Stores the previous location for persistent node locations
+        pub(super) positions: RefCell<HashMap<String, (f32, f32)>>,
     }
 
     #[glib::object_subclass]
@@ -101,15 +106,30 @@ mod imp {
                         .expect("drag-update event is not on the GraphView");
                     let drag_state = drag_state.borrow();
                     if let Some((ref node, x1, y1)) = *drag_state {
-                        widget.move_node(node, x1 + x as f32, y1 + y as f32);
+                        let x_new = x1 + x as f32;
+                        let y_new = y1 + y as f32;
+                        widget.move_node(node, x_new, y_new);
+                        match node.downcast_ref::<Node>() {
+                            Some(node_pw) => {
+                                let node_ident = node_pw.get_ident().unwrap_or_default();
+                                log::debug!("Node moved {}: {}, {}", node_ident, x_new, y_new);
+                                let private = imp::GraphView::from_instance(&widget);
+                                private.positions.borrow_mut().insert(node_ident, (x_new, y_new));
+                            }
+                            None => {
+                                log::debug!("Node (gtk::Widget) cannot be downcast to Node: {}", node);
+                            }
+                        }
                     }
                 }
                 ),
             );
             obj.add_controller(&drag_controller);
+            obj.read_node_positions();
         }
 
-        fn dispose(&self, _obj: &Self::Type) {
+        fn dispose(&self, obj: &Self::Type) {
+            obj.write_node_positions();
             self.nodes
                 .borrow()
                 .values()
@@ -278,35 +298,44 @@ impl GraphView {
         let private = imp::GraphView::from_instance(self);
         node.set_parent(self);
 
-        // Place widgets in colums of 3, growing down
-        let x = if let Some(node_type) = node_type {
-            match node_type {
-                NodeType::Output => 20.0,
-                NodeType::Input => 820.0,
-            }
+        let node_ident = node.get_ident().unwrap_or_default();
+        let mut positions = private.positions.borrow_mut();
+        if positions.contains_key(&node_ident) {
+            let position = positions.get(&node_ident).unwrap().to_owned();
+            log::debug!("Restoring node position for {}: {}, {}", node_ident, position.0, position.1);
+            self.move_node(&node.clone().upcast(), position.0, position.1);
         } else {
-            420.0
-        };
+            // Place widgets in colums of 3, growing down
+            let x = if let Some(node_type) = node_type {
+                match node_type {
+                    NodeType::Output => 20.0,
+                    NodeType::Input => 820.0,
+                }
+            } else {
+                420.0
+            };
 
-        let y = private
-            .nodes
-            .borrow()
-            .values()
-            .filter_map(|node| {
-                // Map nodes to locations, discard nodes without location
-                self.get_node_position(&node.clone().upcast())
-            })
-            .filter(|(x2, _)| {
-                // Only look for other nodes that have a similar x coordinate
-                (x - x2).abs() < 50.0
-            })
-            .max_by(|y1, y2| {
-                // Get max in column
-                y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
-            })
-            .map_or(20_f32, |(_x, y)| y + 100.0);
-
-        self.move_node(&node.clone().upcast(), x, y);
+            let y = private
+                .nodes
+                .borrow()
+                .values()
+                .filter_map(|node| {
+                    // Map nodes to locations, discard nodes without location
+                    self.get_node_position(&node.clone().upcast())
+                })
+                .filter(|(x2, _)| {
+                    // Only look for other nodes that have a similar x coordinate
+                    (x - x2).abs() < 50.0
+                })
+                .max_by(|y1, y2| {
+                    // Get max in column
+                    y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
+                })
+                .map_or(20_f32, |(_x, y)| y + 100.0);
+            log::debug!("Using automatic positioning for {}: {}, {}", node_ident, x, y);
+            self.move_node(&node.clone().upcast(), x, y);
+            positions.insert(node_ident, (x, y));
+        }
 
         private.nodes.borrow_mut().insert(id, node);
     }
@@ -364,6 +393,28 @@ impl GraphView {
         links.remove(&id);
 
         self.queue_draw();
+    }
+
+    pub fn read_node_positions(&self) {
+        let private = imp::GraphView::from_instance(self);
+        let config_home = var("XDG_CONFIG_HOME")
+            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home))).unwrap();
+        let config_meta = r#fs::metadata(config_home.to_owned());
+        if config_meta.is_ok() && config_meta.unwrap().is_file() {
+            let data = fs::read_to_string(config_home).unwrap();
+            private.positions.replace( serde_json::from_str(data.as_str()).unwrap() );
+        }
+    }
+
+    pub fn write_node_positions(&self) {
+        let private = imp::GraphView::from_instance(self);
+        let config_home = var("XDG_CONFIG_HOME")
+            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home))).unwrap();
+        log::debug!("Write node positions: {}", config_home);
+        let mut file = File::create(config_home).unwrap();
+        let data = serde_json::to_string(&private.positions.to_owned());
+        file.write_all(data.unwrap().as_bytes())
+            .expect("Failed to write node positions");
     }
 
     /// Get the position of the specified node inside the graphview.
