@@ -61,7 +61,7 @@ mod imp {
                 ports: RefCell::new(HashMap::new()),
                 num_ports_in: Cell::new(0),
                 num_ports_out: Cell::new(0),
-                ident: RefCell::new( String::from("UnknownNode") ),
+                ident: RefCell::new(String::from("UnknownNode")),
             }
         }
     }
@@ -91,7 +91,7 @@ impl Node {
         let private = imp::Node::from_instance(&res);
 
         private.label.set_text(name);
-        private.ident.replace( String::from(ident) );
+        private.ident.replace(String::from(ident));
 
         res
     }

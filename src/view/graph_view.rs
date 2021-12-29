@@ -27,10 +27,10 @@ use gtk::{
 };
 use log::{error, warn};
 
-use std::{cmp::Ordering, collections::HashMap};
 use std::env::var;
 use std::fs::{self, File};
 use std::io::Write;
+use std::{cmp::Ordering, collections::HashMap};
 
 use crate::NodeType;
 
@@ -309,7 +309,12 @@ impl GraphView {
         let mut positions = private.positions.borrow_mut();
         if positions.contains_key(&node_ident) {
             let position = positions.get(&node_ident).unwrap().to_owned();
-            log::debug!("Restoring node position for {}: {}, {}", node_ident, position.0, position.1);
+            log::debug!(
+                "Restoring node position for {}: {}, {}",
+                node_ident,
+                position.0,
+                position.1
+            );
             self.move_node(&node.clone().upcast(), position.0, position.1);
         } else {
             // Place widgets in colums of 3, growing down
@@ -339,7 +344,12 @@ impl GraphView {
                     y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
                 })
                 .map_or(20_f32, |(_x, y)| y + 100.0);
-            log::debug!("Using automatic positioning for {}: {}, {}", node_ident, x, y);
+            log::debug!(
+                "Using automatic positioning for {}: {}, {}",
+                node_ident,
+                x,
+                y
+            );
             self.move_node(&node.clone().upcast(), x, y);
             positions.insert(node_ident, (x, y));
         }
@@ -405,18 +415,22 @@ impl GraphView {
     pub fn read_node_positions(&self) {
         let private = imp::GraphView::from_instance(self);
         let config_home = var("XDG_CONFIG_HOME")
-            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home))).unwrap();
+            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home)))
+            .unwrap();
         let config_meta = r#fs::metadata(config_home.to_owned());
         if config_meta.is_ok() && config_meta.unwrap().is_file() {
             let data = fs::read_to_string(config_home).unwrap();
-            private.positions.replace( serde_json::from_str(data.as_str()).unwrap() );
+            private
+                .positions
+                .replace(serde_json::from_str(data.as_str()).unwrap());
         }
     }
 
     pub fn write_node_positions(&self) {
         let private = imp::GraphView::from_instance(self);
         let config_home = var("XDG_CONFIG_HOME")
-            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home))).unwrap();
+            .or_else(|_| var("HOME").map(|home|format!("{}/.helvum_positions", home)))
+            .unwrap();
         log::debug!("Write node positions: {}", config_home);
         let mut file = File::create(config_home).unwrap();
         let data = serde_json::to_string(&private.positions.to_owned());
