@@ -25,7 +25,7 @@ use crate::MediaType;
 /// These will be saved in the `State` struct associated with their id.
 pub(super) enum Item {
     Client {
-        // Keep track of the nodes media type to color ports on it.
+        // Keep track of the client names for identifying nodes.
         name: String,
     },
     Node {
@@ -52,6 +52,8 @@ pub(super) struct State {
     items: HashMap<u32, Item>,
     /// Map `(output port id, input port id)` tuples to the id of the link that connects them.
     links: HashMap<(u32, u32), u32>,
+    /// Track auto-increment values for node idents to keep them unique for sure
+    ident_increments: HashMap<String, u32>,
 }
 
 impl State {
@@ -80,6 +82,12 @@ impl State {
     /// Get the id of the link that links the two specified ports.
     pub fn get_link_id(&self, output_port: u32, input_port: u32) -> Option<u32> {
         self.links.get(&(output_port, input_port)).copied()
+    }
+
+    pub fn get_node_ident(&mut self, ident_base: String) -> Option<String> {
+        let ident_increment = self.ident_increments.entry(ident_base.clone()).or_insert(0);
+        *ident_increment += 1;
+        Some( format!("{}::{}", ident_base, ident_increment) )
     }
 
     /// Remove the item with the specified id, returning it if it exists.

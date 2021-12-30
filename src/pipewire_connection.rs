@@ -111,7 +111,7 @@ fn handle_client(
         .as_ref()
         .expect("Node object is missing properties");
 
-    // Get the nicest possible name for the node, using a fallback chain of possible name attributes.
+    // Get the nicest possible name for the client, using a fallback chain of possible name attributes.
     let name = String::from(
         props
             .get("application.name")
@@ -192,13 +192,15 @@ fn handle_node(
     };
 
     // Get a (most likely) unique name that can be used to store the nodes position
-    let ident = format!(
+    let ident_base = format!(
         "{}::{}::{}::{}",
         props.get("media.class").unwrap_or("Unknown"),
         client_name,
         name,
         props.get("object.path").unwrap_or("other")
     );
+    let ident = state.borrow_mut().get_node_ident(ident_base).unwrap();
+
     debug!("Node id {} has ident {}", node.id, ident);
 
     let node_type = props

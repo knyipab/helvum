@@ -243,7 +243,7 @@ impl Application {
             .expect("Failed to send message");
     }
 
-    /// Remove the node with the specified id from the view.
+    /// Remove the client with the specified id from the view.
     fn remove_client(&self, id: u32) {
         info!("Client gone: id {}", id);
     }
