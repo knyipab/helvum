@@ -193,13 +193,13 @@ fn handle_node(
 
     // Get a (most likely) unique name that can be used to store the nodes position
     let ident_base = format!(
-        "{}::{}::{}::{}",
+        "{}::{}::{}::{}::",
         props.get("media.class").unwrap_or("Unknown"),
         client_name,
         name,
         props.get("object.path").unwrap_or("other")
     );
-    let ident = state.borrow_mut().get_node_ident(ident_base).unwrap();
+    let ident = state.borrow_mut().get_node_ident(ident_base.clone()).unwrap();
 
     debug!("Node id {} has ident {}", node.id, ident);
 
@@ -219,6 +219,7 @@ fn handle_node(
         Item::Node {
             // widget: node_widget,
             media_type,
+            ident_base,
         },
     );
 

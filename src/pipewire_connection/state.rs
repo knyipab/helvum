@@ -31,6 +31,8 @@ pub(super) enum Item {
     Node {
         // Keep track of the nodes media type to color ports on it.
         media_type: Option<MediaType>,
+        // Remember ident base to maintain auto increment values of recurring nodes
+        ident_base: String,
     },
     Port {
         // Save the id of the node this is on so we can remove the port from it
@@ -87,7 +89,7 @@ impl State {
     pub fn get_node_ident(&mut self, ident_base: String) -> Option<String> {
         let ident_increment = self.ident_increments.entry(ident_base.clone()).or_insert(0);
         *ident_increment += 1;
-        Some(format!("{}::{}", ident_base, ident_increment))
+        Some(format!("{}{}", ident_base, ident_increment))
     }
 
     /// Remove the item with the specified id, returning it if it exists.
@@ -96,6 +98,22 @@ impl State {
 
         if let Some(Item::Link { port_from, port_to }) = removed {
             self.links.remove(&(port_from, port_to));
+        }
+
+        if let Some(Item::Node { media_type: _, ref ident_base }) = removed {
+            // Reset autoincrement if none with the same ident base remain
+            let mut remaining_idents = 0;
+            for (_, cmp_node) in &self.items {
+                if let Item::Node { media_type: _, ident_base: ref cmp_ident_base } = cmp_node {
+                    if ident_base.as_str() == cmp_ident_base.as_str() {
+                        remaining_idents += 1;
+                    }
+                }
+            };
+            if remaining_idents == 0 {
+                self.ident_increments.remove(ident_base);
+                log::debug!("Reset autoincrement for {}*", ident_base);
+            }
         }
 
         removed
