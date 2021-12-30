@@ -87,7 +87,7 @@ impl State {
     pub fn get_node_ident(&mut self, ident_base: String) -> Option<String> {
         let ident_increment = self.ident_increments.entry(ident_base.clone()).or_insert(0);
         *ident_increment += 1;
-        Some( format!("{}::{}", ident_base, ident_increment) )
+        Some(format!("{}::{}", ident_base, ident_increment))
     }
 
     /// Remove the item with the specified id, returning it if it exists.
