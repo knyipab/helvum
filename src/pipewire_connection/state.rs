@@ -102,7 +102,7 @@ impl State {
 
         if let Some(Item::Node {
             media_type: _,
-            ref ident_base
+            ref ident_base,
         }) = removed
         {
             // Reset autoincrement if none with the same ident base remain
@@ -110,14 +110,14 @@ impl State {
             for (_, cmp_node) in &self.items {
                 if let Item::Node {
                     media_type: _,
-                    ident_base: ref cmp_ident_base
+                    ident_base: ref cmp_ident_base,
                 } = cmp_node
                 {
                     if ident_base.as_str() == cmp_ident_base.as_str() {
                         remaining_idents += 1;
                     }
                 }
-            };
+            }
             if remaining_idents == 0 {
                 self.ident_increments.remove(ident_base);
                 log::debug!("Reset autoincrement for {}*", ident_base);
