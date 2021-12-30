@@ -199,7 +199,10 @@ fn handle_node(
         name,
         props.get("object.path").unwrap_or("other")
     );
-    let ident = state.borrow_mut().get_node_ident(ident_base.clone()).unwrap();
+    let ident = state
+        .borrow_mut()
+        .get_node_ident(ident_base.clone())
+        .unwrap();
 
     debug!("Node id {} has ident {}", node.id, ident);
 

@@ -100,11 +100,19 @@ impl State {
             self.links.remove(&(port_from, port_to));
         }
 
-        if let Some(Item::Node { media_type: _, ref ident_base }) = removed {
+        if let Some(Item::Node {
+            media_type: _,
+            ref ident_base
+        }) = removed
+        {
             // Reset autoincrement if none with the same ident base remain
             let mut remaining_idents = 0;
             for (_, cmp_node) in &self.items {
-                if let Item::Node { media_type: _, ident_base: ref cmp_ident_base } = cmp_node {
+                if let Item::Node {
+                    media_type: _,
+                    ident_base: ref cmp_ident_base
+                } = cmp_node
+                {
                     if ident_base.as_str() == cmp_ident_base.as_str() {
                         remaining_idents += 1;
                     }
