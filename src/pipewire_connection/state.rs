@@ -107,7 +107,7 @@ impl State {
         {
             // Reset autoincrement if none with the same ident base remain
             let mut remaining_idents = 0;
-            for (_, cmp_node) in &self.items {
+            for cmp_node in self.items.values() {
                 if let Item::Node {
                     media_type: _,
                     ident_base: ref cmp_ident_base,
