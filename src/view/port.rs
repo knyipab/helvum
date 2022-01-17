@@ -30,14 +30,14 @@ use crate::MediaType;
 
 /// A helper struct for linking a output port to an input port.
 /// It carries the output ports id.
-#[derive(Clone, Debug, glib::GBoxed)]
-#[gboxed(type_name = "HelvumForwardLink")]
+#[derive(Clone, Debug, glib::Boxed)]
+#[boxed_type(name = "HelvumForwardLink")]
 struct ForwardLink(u32);
 
 /// A helper struct for linking an input to an output port.
 /// It carries the input ports id.
-#[derive(Clone, Debug, glib::GBoxed)]
-#[gboxed(type_name = "HelvumReversedLink")]
+#[derive(Clone, Debug, glib::Boxed)]
+#[boxed_type(name = "HelvumReversedLink")]
 struct ReversedLink(u32);
 
 mod imp {
@@ -123,7 +123,7 @@ impl Port {
         // FIXME: We should protect against different media types, e.g. it should not be possible to drop a video port on an audio port.
 
         // The port will simply provide its pipewire id to the drag target.
-        let drag_src = gtk::DragSourceBuilder::new()
+        let drag_src = gtk::DragSource::builder()
             .content(&gdk::ContentProvider::for_value(&match direction {
                 Direction::Input => ReversedLink(id).to_value(),
                 Direction::Output => ForwardLink(id).to_value(),
@@ -155,9 +155,7 @@ impl Port {
                             // Get the callback registered in the widget and call it
                             drop_target
                                 .widget()
-                                .expect("Drop target has no widget")
-                                .emit_by_name("port-toggled", &[&source_id, &this.id()])
-                                .expect("Failed to send signal");
+                                .emit_by_name::<()>("port-toggled", &[&source_id, &this.id()]);
                         } else {
                             warn!("Invalid type dropped on ingoing port");
                         }
@@ -173,9 +171,7 @@ impl Port {
                             // Get the callback registered in the widget and call it
                             drop_target
                                 .widget()
-                                .expect("Drop target has no widget")
-                                .emit_by_name("port-toggled", &[&this.id(), &target_id])
-                                .expect("Failed to send signal");
+                                .emit_by_name::<()>("port-toggled", &[&this.id(), &target_id]);
                         } else {
                             warn!("Invalid type dropped on outgoing port");
                         }

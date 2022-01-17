@@ -25,7 +25,7 @@ use gtk::{
     prelude::*,
     subclass::prelude::*,
 };
-use log::{info, warn};
+use log::info;
 use pipewire::{channel::Sender, spa::Direction};
 
 use crate::{
@@ -56,10 +56,10 @@ mod imp {
     impl ObjectImpl for Application {}
     impl ApplicationImpl for Application {
         fn activate(&self, app: &Self::Type) {
-            let scrollwindow = gtk::ScrolledWindowBuilder::new()
+            let scrollwindow = gtk::ScrolledWindow::builder()
                 .child(&self.graphview)
                 .build();
-            let window = gtk::ApplicationWindowBuilder::new()
+            let window = gtk::ApplicationWindow::builder()
                 .application(app)
                 .default_width(1280)
                 .default_height(720)
@@ -170,7 +170,7 @@ impl Application {
         let port = view::Port::new(id, name, direction, media_type);
 
         // Create or delete a link if the widget emits the "port-toggled" signal.
-        if let Err(e) = port.connect_local(
+        port.connect_local(
             "port_toggled",
             false,
             clone!(@weak self as app => @default-return None, move |args| {
@@ -182,9 +182,7 @@ impl Application {
 
                 None
             }),
-        ) {
-            warn!("Failed to connect to \"port-toggled\" signal: {}", e);
-        }
+        );
 
         imp.graphview.add_port(node_id, id, port);
     }
