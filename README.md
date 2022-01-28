@@ -54,6 +54,9 @@ $ meson install
 in the repository root.
 This will install the compiled project files into `/usr/local`.
 
-# License
+# License and Credits
 Helvum is distributed under the terms of the GPL3 license.
 See LICENSE for more information.
+
+Parts of the build system were taken from the [gtk-rust-template](https://gitlab.gnome.org/World/Rust/gtk-rust-template) project,
+which is provided under the terms of the [MIT license](https://gitlab.gnome.org/World/Rust/gtk-rust-template/-/blob/master/LICENSE.md).
