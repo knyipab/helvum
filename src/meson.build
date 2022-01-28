@@ -26,6 +26,6 @@ custom_target(
     cargo, 'build',
     cargo_options,
     '&&',
-    'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT',
+    'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT@',
   ],
 )
