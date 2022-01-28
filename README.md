@@ -14,9 +14,7 @@ More suggestions are welcome!
 
 # Building
 
-## Via flatpak (recommended)
-The recommended way to build is using flatpak, which will take care of all dependencies and avoid any problems that may come from different system configurations.
-
+## Via flatpak
 If you don't have the flathub repo in your remote-list for flatpak you will need to add that first:
 ```shell
 $ flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -29,12 +27,12 @@ $ flatpak install org.gnome.{Platform,Sdk}//41 org.freedesktop.Sdk.Extension.rus
 
 To compile and install as a flatpak, clone the project, change to the project directory, and run:
 ```shell
-$ flatpak-builder --install flatpak-build/ build-aux/org.freedesktop.ryuukyu.Helvum.json
+$ flatpak-builder --install flatpak-build/ build-aux/org.pipewire.Helvum.json
 ```
 
 You can then run the app via
 ```shell
-$ flatpak run org.freedesktop.ryuukyu.Helvum
+$ flatpak run org.pipewire.Helvum
 ```
 
 ## Manually

@@ -15,12 +15,12 @@
     </description>
     <screenshots>
         <screenshot type="default">
-            <image>https://gitlab.freedesktop.org/ryuukyu/helvum/-/raw/main/docs/screenshot.png</image>
+            <image>https://gitlab.freedesktop.org/pipewire/helvum/-/raw/main/docs/screenshot.png</image>
         </screenshot>
     </screenshots>
     <launchable type="desktop-id">@app-id@.desktop</launchable>
-    <url type="homepage">https://gitlab.freedesktop.org/ryuukyu/helvum</url>
-    <url type="bugtracker">https://gitlab.freedesktop.org/ryuukyu/helvum/-/issues</url>
+    <url type="homepage">https://gitlab.freedesktop.org/pipewire/helvum</url>
+    <url type="bugtracker">https://gitlab.freedesktop.org/pipewire/helvum/-/issues</url>
     <content_rating type="oars-1.0" />
     <releases>
         <release version="0.3.2" date="2021-11-30" />

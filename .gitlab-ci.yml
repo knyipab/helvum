@@ -10,7 +10,7 @@ stages:
   - extras
 
 variables:
-  FDO_UPSTREAM_REPO: 'ryuukyu/helvum'
+  FDO_UPSTREAM_REPO: 'pipewire/helvum'
 
 # Version and tag for our current container
 .fedora:

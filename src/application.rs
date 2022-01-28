@@ -101,9 +101,8 @@ impl Application {
         gtk_receiver: Receiver<PipewireMessage>,
         pw_sender: Sender<GtkMessage>,
     ) -> Self {
-        let app: Application =
-            glib::Object::new(&[("application-id", &"org.freedesktop.ryuukyu.Helvum")])
-                .expect("Failed to create new Application");
+        let app: Application = glib::Object::new(&[("application-id", &"org.pipewire.Helvum")])
+            .expect("Failed to create new Application");
 
         let imp = imp::Application::from_instance(&app);
         imp.pw_sender

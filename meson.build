@@ -6,7 +6,7 @@ project(
   meson_version: '>=0.50.0'
 )
 
-base_id = 'org.freedesktop.ryuukyu.Helvum'
+base_id = 'org.pipewire.Helvum'
 
 dependency('glib-2.0', version: '>= 2.66')
 dependency('gtk4',     version: '>= 4.4.0')
