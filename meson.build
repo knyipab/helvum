@@ -1,7 +1,7 @@
 project(
   'helvum',
   'rust',
-  version: '0.3.2',
+  version: '0.3.3',
   license: 'GPL-3.0',
   meson_version: '>=0.59.0'
 )
