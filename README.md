@@ -2,8 +2,9 @@ Helvum is a GTK-based patchbay for pipewire, inspired by the JACK tool [catia](h
 
 ![Screenshot](docs/screenshot.png)
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/helvum.svg)](https://repology.org/project/helvum/versions)
+<a href="https://flathub.org/apps/details/org.pipewire.Helvum"><img src="https://flathub.org/assets/badges/flathub-badge-en.png" width="300"/></a>
 
+<a href="https://repology.org/project/helvum/versions"><img src="https://repology.org/badge/vertical-allrepos/helvum.svg" width="300"/></a>
 
 # Features planned
 
