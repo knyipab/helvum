@@ -23,6 +23,7 @@
     <url type="bugtracker">https://gitlab.freedesktop.org/pipewire/helvum/-/issues</url>
     <content_rating type="oars-1.0" />
     <releases>
+        <release version="0.3.4" date="2022-02-02" />
         <release version="0.3.3" date="2022-01-28" />
         <release version="0.3.2" date="2021-11-30" />
         <release version="0.3.1" date="2021-09-30" />
