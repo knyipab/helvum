@@ -27,12 +27,30 @@ use gtk::{
 };
 use log::{error, warn};
 
-use std::env::var;
 use std::fs::{self, File};
 use std::io::Write;
 use std::{cmp::Ordering, collections::HashMap};
+use std::{env::var, path::PathBuf};
 
 use crate::NodeType;
+
+fn get_state_dir() -> Result<PathBuf, String> {
+    let state_dir = match var("XDG_STATE_HOME") {
+        Ok(state_dir) => PathBuf::from(state_dir),
+        Err(_) => match var("HOME") {
+            Ok(home_dir) => PathBuf::from_iter(vec![home_dir.as_str(), ".local", "state"]),
+            Err(err) => return Err(err.to_string()),
+        },
+    };
+
+    if !state_dir.exists() {
+        if let Err(err) = std::fs::create_dir_all(&state_dir) {
+            return Err(format!("Unable to create directory: {err}"));
+        }
+    }
+
+    Ok(state_dir)
+}
 
 mod imp {
     use super::*;
@@ -294,7 +312,6 @@ impl GraphView {
         } else {
             420.0
         };
-
         let position = positions.entry(node_ident.to_owned()).or_insert((
             // X
             x,
@@ -385,12 +402,23 @@ impl GraphView {
 
     pub fn read_node_positions(&self) {
         let private = imp::GraphView::from_instance(self);
-        let config_home = var("XDG_CONFIG_HOME")
-            .or_else(|_| var("HOME").map(|home| format!("{}/.helvum_positions", home)))
-            .unwrap();
-        let config_meta = r#fs::metadata(config_home.to_owned());
+
+        let state_positions = match get_state_dir() {
+            Ok(mut state_positions) => {
+                state_positions.push("node_positions");
+                state_positions
+            }
+            Err(err) => {
+                log::warn!("Unable to get state directory: {err}");
+                return;
+            }
+        };
+
+        log::debug!("Read node positions: {:?}", state_positions);
+
+        let config_meta = r#fs::metadata(&state_positions);
         if config_meta.is_ok() && config_meta.unwrap().is_file() {
-            let data = fs::read_to_string(config_home).unwrap();
+            let data = fs::read_to_string(state_positions).unwrap();
             private
                 .positions
                 .replace(serde_json::from_str(data.as_str()).unwrap());
@@ -399,11 +427,20 @@ impl GraphView {
 
     pub fn write_node_positions(&self) {
         let private = imp::GraphView::from_instance(self);
-        let config_home = var("XDG_CONFIG_HOME")
-            .or_else(|_| var("HOME").map(|home| format!("{}/.helvum_positions", home)))
-            .unwrap();
-        log::debug!("Write node positions: {}", config_home);
-        let mut file = File::create(config_home).unwrap();
+
+        let state_positions = match get_state_dir() {
+            Ok(mut state_positions) => {
+                state_positions.push("node_positions");
+                state_positions
+            }
+            Err(err) => {
+                log::warn!("Unable to get state directory: {err}");
+                return;
+            }
+        };
+        log::debug!("Write node positions: {:?}", state_positions);
+
+        let mut file = File::create(state_positions).unwrap();
         let data = serde_json::to_string(&private.positions.to_owned());
         file.write_all(data.unwrap().as_bytes())
             .expect("Failed to write node positions");
