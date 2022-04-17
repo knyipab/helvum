@@ -35,13 +35,14 @@ use std::{env::var, path::PathBuf};
 use crate::NodeType;
 
 fn get_state_dir() -> Result<PathBuf, String> {
-    let state_dir = match var("XDG_STATE_HOME") {
+    let mut state_dir = match var("XDG_STATE_HOME") {
         Ok(state_dir) => PathBuf::from(state_dir),
         Err(_) => match var("HOME") {
             Ok(home_dir) => PathBuf::from_iter(vec![home_dir.as_str(), ".local", "state"]),
             Err(err) => return Err(err.to_string()),
         },
     };
+    state_dir.push("helvum");
 
     if !state_dir.exists() {
         if let Err(err) = std::fs::create_dir_all(&state_dir) {
