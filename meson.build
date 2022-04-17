@@ -1,21 +1,22 @@
 project(
   'helvum',
   'rust',
-  version: '0.3.2',
+  version: '0.3.4',
   license: 'GPL-3.0',
-  meson_version: '>=0.50.0'
+  meson_version: '>=0.59.0'
 )
 
-base_id = 'org.freedesktop.ryuukyu.Helvum'
+gnome = import('gnome')
 
-dependency('glib-2.0', version: '>= 2.48')
+base_id = 'org.pipewire.Helvum'
+
+dependency('glib-2.0', version: '>= 2.66')
 dependency('gtk4',     version: '>= 4.4.0')
 dependency('libpipewire-0.3')
 
 desktop_file_validate = find_program('desktop-file-validate', required: false)
 appstream_util = find_program('appstream-util', required: false)
 cargo = find_program('cargo', required: true)
-cargo_script = find_program('build-aux/cargo.sh')
 
 prefix = get_option('prefix')
 bindir = prefix / get_option('bindir')
@@ -24,16 +25,14 @@ iconsdir = datadir / 'icons'
 
 meson.add_dist_script(
   'build-aux/dist-vendor.sh',
-  meson.build_root() / 'meson-dist' / meson.project_name() + '-' + meson.project_version(),
-  meson.source_root()
-)
-
-cargo_sources = files(
-  'Cargo.toml',
-  'Cargo.lock',
+  meson.project_build_root() / 'meson-dist' / meson.project_name() + '-' + meson.project_version(),
+  meson.project_source_root()
 )
 
 subdir('src')
 subdir('data')
 
-meson.add_install_script('build-aux/meson_post_install.py')
+gnome.post_install(
+  gtk_update_icon_cache: true,
+  update_desktop_database: true,
+)

@@ -75,7 +75,6 @@ mod imp {
                     let mut drag_state = drag_state.borrow_mut();
                     let widget = drag_controller
                         .widget()
-                        .expect("drag-begin event has no widget")
                         .dynamic_cast::<Self::Type>()
                         .expect("drag-begin event is not on the GraphView");
                     // pick() should at least return the widget itself.
@@ -87,12 +86,8 @@ mod imp {
                     } else if let Some(target) = target.ancestor(Node::static_type()) {
                         // The user targeted a Node without targeting a specific Port.
                         // Drag the Node around the screen.
-                        if let Some((x, y)) = widget.get_node_position(&target) {
-                            Some((target, x, y))
-                        } else {
-                            error!("Failed to obtain position of dragged node, drag aborted.");
-                            None
-                        }
+                        let (x, y) = widget.get_node_position(&target);
+                        Some((target, x, y))
                     } else {
                         None
                     }
@@ -102,7 +97,6 @@ mod imp {
                 clone!(@strong drag_state => move |drag_controller, x, y| {
                     let widget = drag_controller
                         .widget()
-                        .expect("drag-update event has no widget")
                         .dynamic_cast::<Self::Type>()
                         .expect("drag-update event is not on the GraphView");
                     let drag_state = drag_state.borrow();
@@ -145,25 +139,23 @@ mod imp {
 
             let alloc = widget.allocation();
             let widget_bounds =
-                graphene::Rect::new(0.0, 0.0, alloc.width as f32, alloc.height as f32);
+                graphene::Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32);
 
-            let background_cr = snapshot
-                .append_cairo(&widget_bounds)
-                .expect("Failed to get cairo context");
+            let background_cr = snapshot.append_cairo(&widget_bounds);
 
             // Draw a nice grid on the background.
             background_cr.set_source_rgb(0.18, 0.18, 0.18);
             background_cr.set_line_width(0.2); // TODO: Set to 1px
             let mut y = 0.0;
-            while y < alloc.height.into() {
+            while y < alloc.height().into() {
                 background_cr.move_to(0.0, y);
-                background_cr.line_to(alloc.width.into(), y);
+                background_cr.line_to(alloc.width().into(), y);
                 y += 20.0; // TODO: Change to em;
             }
             let mut x = 0.0;
-            while x < alloc.width.into() {
+            while x < alloc.width().into() {
                 background_cr.move_to(x, 0.0);
-                background_cr.line_to(x, alloc.height.into());
+                background_cr.line_to(x, alloc.height().into());
                 x += 20.0; // TODO: Change to em;
             }
             if let Err(e) = background_cr.stroke() {
@@ -177,32 +169,26 @@ mod imp {
                 .for_each(|node| self.instance().snapshot_child(node, snapshot));
 
             // Draw all links
-            let link_cr = snapshot
-                .append_cairo(&graphene::Rect::new(
-                    0.0,
-                    0.0,
-                    alloc.width as f32,
-                    alloc.height as f32,
-                ))
-                .expect("Failed to get cairo context");
+            let link_cr = snapshot.append_cairo(&graphene::Rect::new(
+                0.0,
+                0.0,
+                alloc.width() as f32,
+                alloc.height() as f32,
+            ));
 
             link_cr.set_line_width(2.0);
 
-            let gtk::gdk::RGBA {
-                red,
-                green,
-                blue,
-                alpha,
-            } = widget
+            let rgba = widget
                 .style_context()
                 .lookup_color("graphview-link")
-                .unwrap_or(gtk::gdk::RGBA {
-                    red: 0.0,
-                    green: 0.0,
-                    blue: 0.0,
-                    alpha: 0.0,
-                });
-            link_cr.set_source_rgba(red.into(), green.into(), blue.into(), alpha.into());
+                .unwrap_or_else(|| gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
+
+            link_cr.set_source_rgba(
+                rgba.red().into(),
+                rgba.green().into(),
+                rgba.blue().into(),
+                rgba.alpha().into(),
+            );
 
             for (link, active) in self.links.borrow().values() {
                 if let Some((from_x, from_y, to_x, to_y)) = self.get_link_coordinates(link) {
@@ -259,34 +245,26 @@ mod imp {
             // so we manually calculate the needed offsets here.
 
             let from_port = &nodes.get(&link.node_from)?.get_port(link.port_from)?;
-            let gtk::Allocation {
-                x: mut fx,
-                y: mut fy,
-                width: fw,
-                height: fh,
-            } = from_port.allocation();
             let from_node = from_port
                 .ancestor(Node::static_type())
                 .expect("Port is not a child of a node");
-            let gtk::Allocation { x: fnx, y: fny, .. } = from_node.allocation();
-            fx += fnx + fw;
-            fy += fny + (fh / 2);
+            let from_x = from_node.allocation().x()
+                + from_port.allocation().x()
+                + from_port.allocation().width();
+            let from_y = from_node.allocation().y()
+                + from_port.allocation().y()
+                + (from_port.allocation().height() / 2);
 
             let to_port = &nodes.get(&link.node_to)?.get_port(link.port_to)?;
-            let gtk::Allocation {
-                x: mut tx,
-                y: mut ty,
-                height: th,
-                ..
-            } = to_port.allocation();
             let to_node = to_port
                 .ancestor(Node::static_type())
                 .expect("Port is not a child of a node");
-            let gtk::Allocation { x: tnx, y: tny, .. } = to_node.allocation();
-            tx += tnx;
-            ty += tny + (th / 2);
+            let to_x = to_node.allocation().x() + to_port.allocation().x();
+            let to_y = to_node.allocation().y()
+                + to_port.allocation().y()
+                + (to_port.allocation().height() / 2);
 
-            Some((fx.into(), fy.into(), tx.into(), ty.into()))
+            Some((from_x.into(), from_y.into(), to_x.into(), to_y.into()))
         }
     }
 }
@@ -316,6 +294,7 @@ impl GraphView {
         } else {
             420.0
         };
+
         let position = positions.entry(node_ident.to_owned()).or_insert((
             // X
             x,
@@ -324,8 +303,8 @@ impl GraphView {
                 .nodes
                 .borrow()
                 .values()
-                .filter_map(|node| {
-                    // Map nodes to locations, discard nodes without location
+                .map(|node| {
+                    // Map nodes to their locations
                     self.get_node_position(&node.clone().upcast())
                 })
                 .filter(|(x2, _)| {
@@ -431,9 +410,7 @@ impl GraphView {
     }
 
     /// Get the position of the specified node inside the graphview.
-    ///
-    /// Returns `None` if the node is not in the graphview.
-    pub(super) fn get_node_position(&self, node: &gtk::Widget) -> Option<(f32, f32)> {
+    pub(super) fn get_node_position(&self, node: &gtk::Widget) -> (f32, f32) {
         let layout_manager = self
             .layout_manager()
             .expect("Failed to get layout manager")
@@ -441,13 +418,12 @@ impl GraphView {
             .expect("Failed to cast to FixedLayout");
 
         let node = layout_manager
-            .layout_child(node)?
+            .layout_child(node)
             .dynamic_cast::<gtk::FixedLayoutChild>()
             .expect("Could not cast to FixedLayoutChild");
-        let transform = node
-            .transform()
-            .expect("Failed to obtain transform from layout child");
-        Some(transform.to_translate())
+        node.transform()
+            .expect("Failed to obtain transform from layout child")
+            .to_translate()
     }
 
     pub(super) fn move_node(&self, node: &gtk::Widget, x: f32, y: f32) {
@@ -464,7 +440,6 @@ impl GraphView {
 
         layout_manager
             .layout_child(node)
-            .expect("Could not get layout child")
             .dynamic_cast::<gtk::FixedLayoutChild>()
             .expect("Could not cast to FixedLayoutChild")
             .set_transform(&transform);

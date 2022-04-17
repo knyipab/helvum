@@ -2,7 +2,7 @@
 
 The following describes the process of making a new release:
 
-1. In `data/org.freedesktop.ryuukyu.Helvum.metainfo.xml.in`,
+1. In `data/org.pipewire.Helvum.metainfo.xml.in`,
    add a new `<release>` tag to the releases section with the appropriate version and date.
 
 2. In `meson.build` and `Cargo.toml`, bumb the projects version to the new version.

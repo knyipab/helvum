@@ -2,8 +2,9 @@ Helvum is a GTK-based patchbay for pipewire, inspired by the JACK tool [catia](h
 
 ![Screenshot](docs/screenshot.png)
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/helvum.svg)](https://repology.org/project/helvum/versions)
+<a href="https://flathub.org/apps/details/org.pipewire.Helvum"><img src="https://flathub.org/assets/badges/flathub-badge-en.png" width="300"/></a>
 
+<a href="https://repology.org/project/helvum/versions"><img src="https://repology.org/badge/vertical-allrepos/helvum.svg" width="300"/></a>
 
 # Features planned
 
@@ -14,9 +15,7 @@ More suggestions are welcome!
 
 # Building
 
-## Via flatpak (recommended)
-The recommended way to build is using flatpak, which will take care of all dependencies and avoid any problems that may come from different system configurations.
-
+## Via flatpak
 If you don't have the flathub repo in your remote-list for flatpak you will need to add that first:
 ```shell
 $ flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -29,12 +28,12 @@ $ flatpak install org.gnome.{Platform,Sdk}//41 org.freedesktop.Sdk.Extension.rus
 
 To compile and install as a flatpak, clone the project, change to the project directory, and run:
 ```shell
-$ flatpak-builder --install flatpak-build/ build-aux/org.freedesktop.ryuukyu.Helvum.json
+$ flatpak-builder --install flatpak-build/ build-aux/org.pipewire.Helvum.json
 ```
 
 You can then run the app via
 ```shell
-$ flatpak run org.freedesktop.ryuukyu.Helvum
+$ flatpak run org.pipewire.Helvum
 ```
 
 ## Manually
@@ -56,6 +55,9 @@ $ meson install
 in the repository root.
 This will install the compiled project files into `/usr/local`.
 
-# License
+# License and Credits
 Helvum is distributed under the terms of the GPL3 license.
 See LICENSE for more information.
+
+Parts of the build system were taken from the [gtk-rust-template](https://gitlab.gnome.org/World/Rust/gtk-rust-template) project,
+which is provided under the terms of the [MIT license](https://gitlab.gnome.org/World/Rust/gtk-rust-template/-/blob/master/LICENSE.md).
