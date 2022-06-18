@@ -1,11 +1,8 @@
-// graph_view.rs
-//
 // Copyright 2021 Tom A. Wagner <tom.a.wagner@protonmail.com>
 //
 // This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// it under the terms of the GNU General Public License version 3 as published by
+// the Free Software Foundation.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -157,29 +154,6 @@ mod imp {
             Try to use relative units (em) and colours from the theme as much as possible. */
 
             let alloc = widget.allocation();
-            let widget_bounds =
-                graphene::Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32);
-
-            let background_cr = snapshot.append_cairo(&widget_bounds);
-
-            // Draw a nice grid on the background.
-            background_cr.set_source_rgb(0.18, 0.18, 0.18);
-            background_cr.set_line_width(0.2); // TODO: Set to 1px
-            let mut y = 0.0;
-            while y < alloc.height().into() {
-                background_cr.move_to(0.0, y);
-                background_cr.line_to(alloc.width().into(), y);
-                y += 20.0; // TODO: Change to em;
-            }
-            let mut x = 0.0;
-            while x < alloc.width().into() {
-                background_cr.move_to(x, 0.0);
-                background_cr.line_to(x, alloc.height().into());
-                x += 20.0; // TODO: Change to em;
-            }
-            if let Err(e) = background_cr.stroke() {
-                warn!("Failed to draw graphview grid: {}", e);
-            };
 
             // Draw all children
             self.nodes
