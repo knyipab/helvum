@@ -24,9 +24,31 @@ use gtk::{
 };
 use log::{error, warn};
 
+use std::fs::{self, File};
+use std::io::Write;
 use std::{cmp::Ordering, collections::HashMap};
+use std::{env::var, path::PathBuf};
 
 use crate::NodeType;
+
+fn get_state_dir() -> Result<PathBuf, String> {
+    let mut state_dir = match var("XDG_STATE_HOME") {
+        Ok(state_dir) => PathBuf::from(state_dir),
+        Err(_) => match var("HOME") {
+            Ok(home_dir) => PathBuf::from_iter(vec![home_dir.as_str(), ".local", "state"]),
+            Err(err) => return Err(err.to_string()),
+        },
+    };
+    state_dir.push("helvum");
+
+    if !state_dir.exists() {
+        if let Err(err) = std::fs::create_dir_all(&state_dir) {
+            return Err(format!("Unable to create directory: {err}"));
+        }
+    }
+
+    Ok(state_dir)
+}
 
 mod imp {
     use super::*;
@@ -40,6 +62,8 @@ mod imp {
         pub(super) nodes: RefCell<HashMap<u32, Node>>,
         /// Stores the link and whether it is currently active.
         pub(super) links: RefCell<HashMap<u32, (crate::PipewireLink, bool)>>,
+        /// Stores the previous location for persistent node locations
+        pub(super) positions: RefCell<HashMap<String, (f32, f32)>>,
     }
 
     #[glib::object_subclass]
@@ -93,15 +117,30 @@ mod imp {
                         .expect("drag-update event is not on the GraphView");
                     let drag_state = drag_state.borrow();
                     if let Some((ref node, x1, y1)) = *drag_state {
-                        widget.move_node(node, x1 + x as f32, y1 + y as f32);
+                        let x_new = x1 + x as f32;
+                        let y_new = y1 + y as f32;
+                        widget.move_node(node, x_new, y_new);
+                        match node.downcast_ref::<Node>() {
+                            Some(node_pw) => {
+                                let node_ident = node_pw.get_ident().unwrap_or_default();
+                                log::debug!("Node moved {}: {}, {}", node_ident, x_new, y_new);
+                                let private = imp::GraphView::from_instance(&widget);
+                                private.positions.borrow_mut().insert(node_ident, (x_new, y_new));
+                            }
+                            None => {
+                                log::debug!("Node (gtk::Widget) cannot be downcast to Node: {}", node);
+                            }
+                        }
                     }
                 }
                 ),
             );
             obj.add_controller(&drag_controller);
+            obj.read_node_positions();
         }
 
-        fn dispose(&self, _obj: &Self::Type) {
+        fn dispose(&self, obj: &Self::Type) {
+            obj.write_node_positions();
             self.nodes
                 .borrow()
                 .values()
@@ -237,7 +276,9 @@ impl GraphView {
         let private = imp::GraphView::from_instance(self);
         node.set_parent(self);
 
-        // Place widgets in colums of 3, growing down
+        let node_ident = node.get_ident().unwrap_or_default();
+        let mut positions = private.positions.borrow_mut();
+
         let x = if let Some(node_type) = node_type {
             match node_type {
                 NodeType::Output => 20.0,
@@ -246,26 +287,35 @@ impl GraphView {
         } else {
             420.0
         };
-
-        let y = private
-            .nodes
-            .borrow()
-            .values()
-            .map(|node| {
-                // Map nodes to their locations
-                self.get_node_position(&node.clone().upcast())
-            })
-            .filter(|(x2, _)| {
-                // Only look for other nodes that have a similar x coordinate
-                (x - x2).abs() < 50.0
-            })
-            .max_by(|y1, y2| {
-                // Get max in column
-                y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
-            })
-            .map_or(20_f32, |(_x, y)| y + 100.0);
-
-        self.move_node(&node.clone().upcast(), x, y);
+        let position = positions.entry(node_ident.to_owned()).or_insert((
+            // X
+            x,
+            // Y
+            private
+                .nodes
+                .borrow()
+                .values()
+                .map(|node| {
+                    // Map nodes to their locations
+                    self.get_node_position(&node.clone().upcast())
+                })
+                .filter(|(x2, _)| {
+                    // Only look for other nodes that have a similar x coordinate
+                    (x - x2).abs() < 50.0
+                })
+                .max_by(|y1, y2| {
+                    // Get max in column
+                    y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
+                })
+                .map_or(20_f32, |(_x, y)| y + 100.0),
+        ));
+        log::debug!(
+            "Initial node position for {}: {}, {}",
+            node_ident,
+            position.0,
+            position.1
+        );
+        self.move_node(&node.clone().upcast(), position.0, position.1);
 
         private.nodes.borrow_mut().insert(id, node);
     }
@@ -323,6 +373,52 @@ impl GraphView {
         links.remove(&id);
 
         self.queue_draw();
+    }
+
+    pub fn read_node_positions(&self) {
+        let private = imp::GraphView::from_instance(self);
+
+        let state_positions = match get_state_dir() {
+            Ok(mut state_positions) => {
+                state_positions.push("node_positions");
+                state_positions
+            }
+            Err(err) => {
+                log::warn!("Unable to get state directory: {err}");
+                return;
+            }
+        };
+
+        log::debug!("Read node positions: {:?}", state_positions);
+
+        let config_meta = r#fs::metadata(&state_positions);
+        if config_meta.is_ok() && config_meta.unwrap().is_file() {
+            let data = fs::read_to_string(state_positions).unwrap();
+            private
+                .positions
+                .replace(serde_json::from_str(data.as_str()).unwrap());
+        }
+    }
+
+    pub fn write_node_positions(&self) {
+        let private = imp::GraphView::from_instance(self);
+
+        let state_positions = match get_state_dir() {
+            Ok(mut state_positions) => {
+                state_positions.push("node_positions");
+                state_positions
+            }
+            Err(err) => {
+                log::warn!("Unable to get state directory: {err}");
+                return;
+            }
+        };
+        log::debug!("Write node positions: {:?}", state_positions);
+
+        let mut file = File::create(state_positions).unwrap();
+        let data = serde_json::to_string(&private.positions.to_owned());
+        file.write_all(data.unwrap().as_bytes())
+            .expect("Failed to write node positions");
     }
 
     /// Get the position of the specified node inside the graphview.

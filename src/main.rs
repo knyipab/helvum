@@ -34,9 +34,14 @@ enum GtkMessage {
 /// Messages sent by the pipewire thread to notify the GTK thread.
 #[derive(Debug, Clone)]
 enum PipewireMessage {
+    ClientAdded {
+        id: u32,
+        name: String,
+    },
     NodeAdded {
         id: u32,
         name: String,
+        ident: String,
         node_type: Option<NodeType>,
     },
     PortAdded {
@@ -57,6 +62,9 @@ enum PipewireMessage {
     LinkStateChanged {
         id: u32,
         active: bool,
+    },
+    ClientRemoved {
+        id: u32,
     },
     NodeRemoved {
         id: u32,

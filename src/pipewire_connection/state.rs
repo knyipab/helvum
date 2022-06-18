@@ -21,9 +21,15 @@ use crate::MediaType;
 /// Any pipewire item we need to keep track of.
 /// These will be saved in the `State` struct associated with their id.
 pub(super) enum Item {
+    Client {
+        // Keep track of the client names for identifying nodes.
+        name: String,
+    },
     Node {
         // Keep track of the nodes media type to color ports on it.
         media_type: Option<MediaType>,
+        // Remember ident base to maintain auto increment values of recurring nodes
+        ident_base: String,
     },
     Port {
         // Save the id of the node this is on so we can remove the port from it
@@ -45,6 +51,8 @@ pub(super) struct State {
     items: HashMap<u32, Item>,
     /// Map `(output port id, input port id)` tuples to the id of the link that connects them.
     links: HashMap<(u32, u32), u32>,
+    /// Track auto-increment values for node idents to keep them unique for sure
+    ident_increments: HashMap<String, u32>,
 }
 
 impl State {
@@ -75,12 +83,42 @@ impl State {
         self.links.get(&(output_port, input_port)).copied()
     }
 
+    pub fn get_node_ident(&mut self, ident_base: String) -> Option<String> {
+        let ident_increment = self.ident_increments.entry(ident_base.clone()).or_insert(0);
+        *ident_increment += 1;
+        Some(format!("{}{}", ident_base, ident_increment))
+    }
+
     /// Remove the item with the specified id, returning it if it exists.
     pub fn remove(&mut self, id: u32) -> Option<Item> {
         let removed = self.items.remove(&id);
 
         if let Some(Item::Link { port_from, port_to }) = removed {
             self.links.remove(&(port_from, port_to));
+        }
+
+        if let Some(Item::Node {
+            media_type: _,
+            ref ident_base,
+        }) = removed
+        {
+            // Reset autoincrement if none with the same ident base remain
+            let mut remaining_idents = 0;
+            for cmp_node in self.items.values() {
+                if let Item::Node {
+                    media_type: _,
+                    ident_base: ref cmp_ident_base,
+                } = cmp_node
+                {
+                    if ident_base.as_str() == cmp_ident_base.as_str() {
+                        remaining_idents += 1;
+                    }
+                }
+            }
+            if remaining_idents == 0 {
+                self.ident_increments.remove(ident_base);
+                log::debug!("Reset autoincrement for {}*", ident_base);
+            }
         }
 
         removed
