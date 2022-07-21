@@ -38,6 +38,7 @@ struct ForwardLink(u32);
 struct ReversedLink(u32);
 
 mod imp {
+    use glib::ParamFlags;
     use once_cell::{sync::Lazy, unsync::OnceCell};
     use pipewire::spa::Direction;
 
@@ -46,14 +47,14 @@ mod imp {
     /// Graphical representation of a pipewire port.
     #[derive(Default)]
     pub struct Port {
-        pub(super) label: OnceCell<gtk::Label>,
-        pub(super) id: OnceCell<u32>,
+        pub(super) pipewire_id: OnceCell<u32>,
+        pub(super) label: gtk::Label,
         pub(super) direction: OnceCell<Direction>,
     }
 
     #[glib::object_subclass]
     impl ObjectSubclass for Port {
-        const NAME: &'static str = "Port";
+        const NAME: &'static str = "HelvumPort";
         type Type = super::Port;
         type ParentType = gtk::Widget;
 
@@ -66,9 +67,53 @@ mod imp {
     }
 
     impl ObjectImpl for Port {
+        fn constructed(&self, obj: &Self::Type) {
+            self.parent_constructed(obj);
+            self.label.set_parent(obj);
+        }
+
         fn dispose(&self, _obj: &Self::Type) {
-            if let Some(label) = self.label.get() {
-                label.unparent()
+            self.label.unparent()
+        }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
+                vec![
+                    glib::ParamSpecUInt::new(
+                        "pipewire-id",
+                        "pipewire-id",
+                        "pipewire-id",
+                        u32::MIN,
+                        u32::MAX,
+                        0,
+                        ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY,
+                    ),
+                    glib::ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
+                ]
+            });
+
+            PROPERTIES.as_ref()
+        }
+
+        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "pipewire-id" => self.pipewire_id.get().unwrap().to_value(),
+                "name" => self.label.text().to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn set_property(
+            &self,
+            _obj: &Self::Type,
+            _id: usize,
+            value: &glib::Value,
+            pspec: &glib::ParamSpec,
+        ) {
+            match pspec.name() {
+                "name" => self.label.set_text(value.get().unwrap()),
+                "pipewire-id" => self.pipewire_id.set(value.get().unwrap()).unwrap(),
+                _ => unimplemented!(),
             }
         }
 
@@ -98,21 +143,15 @@ glib::wrapper! {
 impl Port {
     pub fn new(id: u32, name: &str, direction: Direction, media_type: Option<MediaType>) -> Self {
         // Create the widget and initialize needed fields
-        let res: Self = glib::Object::new(&[]).expect("Failed to create Port");
+        let res: Self = glib::Object::new(&[("pipewire-id", &id), ("name", &name)])
+            .expect("Failed to create Port");
 
         let private = imp::Port::from_instance(&res);
-        private.id.set(id).expect("Port id already set");
+
         private
             .direction
             .set(direction)
             .expect("Port direction already set");
-
-        let label = gtk::Label::new(Some(name));
-        label.set_parent(&res);
-        private
-            .label
-            .set(label)
-            .expect("Port label was already set");
 
         // Add a drag source and drop target controller with the type depending on direction,
         // they will be responsible for link creation by dragging an output port onto an input port or the other way around.
@@ -152,7 +191,7 @@ impl Port {
                             // Get the callback registered in the widget and call it
                             drop_target
                                 .widget()
-                                .emit_by_name::<()>("port-toggled", &[&source_id, &this.id()]);
+                                .emit_by_name::<()>("port-toggled", &[&source_id, &this.pipewire_id()]);
                         } else {
                             warn!("Invalid type dropped on ingoing port");
                         }
@@ -168,7 +207,7 @@ impl Port {
                             // Get the callback registered in the widget and call it
                             drop_target
                                 .widget()
-                                .emit_by_name::<()>("port-toggled", &[&this.id(), &target_id]);
+                                .emit_by_name::<()>("port-toggled", &[&this.pipewire_id(), &target_id]);
                         } else {
                             warn!("Invalid type dropped on outgoing port");
                         }
@@ -194,9 +233,18 @@ impl Port {
         res
     }
 
-    pub fn id(&self) -> u32 {
-        let private = imp::Port::from_instance(self);
-        private.id.get().copied().expect("Port id is not set")
+    pub fn pipewire_id(&self) -> u32 {
+        self.property("pipewire-id")
+    }
+
+    /// Get the nodes `name` property, which represents the displayed name.
+    pub fn name(&self) -> String {
+        self.property("name")
+    }
+
+    /// Set the nodes `name` property, which represents the displayed name.
+    pub fn set_name(&self, name: &str) {
+        self.set_property("name", name);
     }
 
     pub fn direction(&self) -> &Direction {

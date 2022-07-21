@@ -20,11 +20,15 @@ use pipewire::spa::Direction;
 use std::collections::HashMap;
 
 mod imp {
+    use glib::ParamFlags;
+    use once_cell::sync::Lazy;
+
     use super::*;
 
     use std::cell::{Cell, RefCell};
 
     pub struct Node {
+        pub(super) pipewire_id: Cell<u32>,
         pub(super) grid: gtk::Grid,
         pub(super) label: gtk::Label,
         pub(super) ports: RefCell<HashMap<u32, crate::view::port::Port>>,
@@ -34,7 +38,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for Node {
-        const NAME: &'static str = "Node";
+        const NAME: &'static str = "HelvumNode";
         type Type = super::Node;
         type ParentType = gtk::Widget;
 
@@ -52,6 +56,7 @@ mod imp {
             label.set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
 
             Self {
+                pipewire_id: Cell::new(0),
                 grid,
                 label,
                 ports: RefCell::new(HashMap::new()),
@@ -65,6 +70,47 @@ mod imp {
         fn constructed(&self, obj: &Self::Type) {
             self.parent_constructed(obj);
             self.grid.set_parent(obj);
+        }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
+                vec![
+                    glib::ParamSpecUInt::new(
+                        "pipewire-id",
+                        "pipewire-id",
+                        "pipewire-id",
+                        u32::MIN,
+                        u32::MAX,
+                        0,
+                        ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY,
+                    ),
+                    glib::ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
+                ]
+            });
+
+            PROPERTIES.as_ref()
+        }
+
+        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "pipewire-id" => self.pipewire_id.get().to_value(),
+                "name" => self.label.text().to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn set_property(
+            &self,
+            _obj: &Self::Type,
+            _id: usize,
+            value: &glib::Value,
+            pspec: &glib::ParamSpec,
+        ) {
+            match pspec.name() {
+                "name" => self.label.set_text(value.get().unwrap()),
+                "pipewire-id" => self.pipewire_id.set(value.get().unwrap()),
+                _ => unimplemented!(),
+            }
         }
 
         fn dispose(&self, _obj: &Self::Type) {
@@ -81,13 +127,23 @@ glib::wrapper! {
 }
 
 impl Node {
-    pub fn new(name: &str) -> Self {
-        let res: Self = glib::Object::new(&[]).expect("Failed to create Node");
-        let private = imp::Node::from_instance(&res);
+    pub fn new(name: &str, pipewire_id: u32) -> Self {
+        glib::Object::new(&[("name", &name), ("pipewire-id", &pipewire_id)])
+            .expect("Failed to create Node")
+    }
 
-        private.label.set_text(name);
+    pub fn pipewire_id(&self) -> u32 {
+        self.property("pipewire-id")
+    }
 
-        res
+    /// Get the nodes `name` property, which represents the displayed name.
+    pub fn name(&self) -> String {
+        self.property("name")
+    }
+
+    /// Set the nodes `name` property, which represents the displayed name.
+    pub fn set_name(&self, name: &str) {
+        self.set_property("name", name);
     }
 
     pub fn add_port(&mut self, id: u32, port: super::port::Port) {

@@ -145,7 +145,7 @@ impl Application {
 
         imp::Application::from_instance(self).graphview.add_node(
             id,
-            view::Node::new(name),
+            view::Node::new(name, id),
             node_type,
         );
     }
