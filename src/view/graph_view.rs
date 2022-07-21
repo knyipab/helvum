@@ -18,7 +18,7 @@ use super::{Node, Port};
 
 use gtk::{
     glib::{self, clone},
-    graphene, gsk,
+    graphene::{self, Point},
     prelude::*,
     subclass::prelude::*,
 };
@@ -28,18 +28,27 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use crate::NodeType;
 
+const CANVAS_SIZE: f64 = 5000.0;
+
 mod imp {
     use super::*;
 
-    use std::{cell::RefCell, rc::Rc};
+    use std::cell::RefCell;
 
+    use gtk::{gdk::RGBA, graphene::Rect, gsk::ColorStop};
     use log::warn;
+    use once_cell::sync::Lazy;
 
     #[derive(Default)]
     pub struct GraphView {
-        pub(super) nodes: RefCell<HashMap<u32, Node>>,
+        /// Stores nodes and their positions.
+        pub(super) nodes: RefCell<HashMap<u32, (Node, Point)>>,
         /// Stores the link and whether it is currently active.
         pub(super) links: RefCell<HashMap<u32, (crate::PipewireLink, bool)>>,
+        pub hadjustment: RefCell<Option<gtk::Adjustment>>,
+        pub vadjustment: RefCell<Option<gtk::Adjustment>>,
+        /// When a node drag is ongoing, this stores the dragged node and the initial coordinates on the widget surface.
+        pub drag_state: RefCell<Option<(Node, Point)>>,
     }
 
     #[glib::object_subclass]
@@ -47,10 +56,9 @@ mod imp {
         const NAME: &'static str = "GraphView";
         type Type = super::GraphView;
         type ParentType = gtk::Widget;
+        type Interfaces = (gtk::Scrollable,);
 
         fn class_init(klass: &mut Self::Class) {
-            // The layout manager determines how child widgets are laid out.
-            klass.set_layout_manager_type::<gtk::FixedLayout>();
             klass.set_css_name("graphview");
         }
     }
@@ -59,45 +67,56 @@ mod imp {
         fn constructed(&self, obj: &Self::Type) {
             self.parent_constructed(obj);
 
-            let drag_state = Rc::new(RefCell::new(None));
+            obj.set_overflow(gtk::Overflow::Hidden);
+
             let drag_controller = gtk::GestureDrag::new();
 
-            drag_controller.connect_drag_begin(
-                clone!(@strong drag_state => move |drag_controller, x, y| {
-                    let mut drag_state = drag_state.borrow_mut();
-                    let widget = drag_controller
-                        .widget()
-                        .dynamic_cast::<Self::Type>()
-                        .expect("drag-begin event is not on the GraphView");
-                    // pick() should at least return the widget itself.
-                    let target = widget.pick(x, y, gtk::PickFlags::DEFAULT).expect("drag-begin pick() did not return a widget");
-                    *drag_state = if target.ancestor(Port::static_type()).is_some() {
-                        // The user targeted a port, so the dragging should be handled by the Port
-                        // component instead of here.
-                        None
-                    } else if let Some(target) = target.ancestor(Node::static_type()) {
-                        // The user targeted a Node without targeting a specific Port.
-                        // Drag the Node around the screen.
-                        let (x, y) = widget.get_node_position(&target);
-                        Some((target, x, y))
-                    } else {
-                        None
-                    }
+            drag_controller.connect_drag_begin(|drag_controller, x, y| {
+                let widget = drag_controller
+                    .widget()
+                    .dynamic_cast::<Self::Type>()
+                    .expect("drag-begin event is not on the GraphView");
+                let mut drag_state = widget.imp().drag_state.borrow_mut();
+
+                // pick() should at least return the widget itself.
+                let target = widget
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .expect("drag-begin pick() did not return a widget");
+                *drag_state = if target.ancestor(Port::static_type()).is_some() {
+                    // The user targeted a port, so the dragging should be handled by the Port
+                    // component instead of here.
+                    None
+                } else if let Some(target) = target.ancestor(Node::static_type()) {
+                    // The user targeted a Node without targeting a specific Port.
+                    // Drag the Node around the screen.
+                    let node = target.dynamic_cast_ref::<Node>().unwrap();
+
+                    // We use the upper-left corner of the widget as the start position instead of the actual
+                    // cursor location, this lets us move the node around easier because we don't need to
+                    // account for where the cursor is on the node.
+                    let alloc = node.allocation();
+                    Some((node.clone(), Point::new(alloc.x() as f32, alloc.y() as f32)))
+                } else {
+                    None
                 }
-            ));
-            drag_controller.connect_drag_update(
-                clone!(@strong drag_state => move |drag_controller, x, y| {
-                    let widget = drag_controller
-                        .widget()
-                        .dynamic_cast::<Self::Type>()
-                        .expect("drag-update event is not on the GraphView");
-                    let drag_state = drag_state.borrow();
-                    if let Some((ref node, x1, y1)) = *drag_state {
-                        widget.move_node(node, x1 + x as f32, y1 + y as f32);
-                    }
+            });
+            drag_controller.connect_drag_update(|drag_controller, x, y| {
+                let widget = drag_controller
+                    .widget()
+                    .dynamic_cast::<Self::Type>()
+                    .expect("drag-update event is not on the GraphView");
+                let drag_state = widget.imp().drag_state.borrow();
+                let hadj = widget.imp().hadjustment.borrow();
+                let vadj = widget.imp().vadjustment.borrow();
+
+                if let Some((ref node, ref start_point)) = *drag_state {
+                    widget.move_node(
+                        node,
+                        start_point.x() + hadj.as_ref().unwrap().value() as f32 + x as f32,
+                        start_point.y() + vadj.as_ref().unwrap().value() as f32 + y as f32,
+                    );
                 }
-                ),
-            );
+            });
             obj.add_controller(&drag_controller);
         }
 
@@ -105,24 +124,155 @@ mod imp {
             self.nodes
                 .borrow()
                 .values()
-                .for_each(|node| node.unparent())
+                .for_each(|(node, _)| node.unparent())
+        }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
+                vec![
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("hadjustment"),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vadjustment"),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("hscroll-policy"),
+                    glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vscroll-policy"),
+                ]
+            });
+
+            PROPERTIES.as_ref()
+        }
+
+        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "hadjustment" => self.hadjustment.borrow().to_value(),
+                "vadjustment" => self.vadjustment.borrow().to_value(),
+                "hscroll-policy" | "vscroll-policy" => gtk::ScrollablePolicy::Natural.to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn set_property(
+            &self,
+            obj: &Self::Type,
+            _id: usize,
+            value: &glib::Value,
+            pspec: &glib::ParamSpec,
+        ) {
+            match pspec.name() {
+                "hadjustment" => {
+                    self.set_adjustment(obj, value.get().ok(), gtk::Orientation::Horizontal)
+                }
+                "vadjustment" => {
+                    self.set_adjustment(obj, value.get().ok(), gtk::Orientation::Vertical)
+                }
+                "hscroll-policy" | "vscroll-policy" => {}
+                _ => unimplemented!(),
+            }
         }
     }
 
     impl WidgetImpl for GraphView {
-        fn snapshot(&self, widget: &Self::Type, snapshot: &gtk::Snapshot) {
-            /* FIXME: A lot of hardcoded values in here.
-            Try to use relative units (em) and colours from the theme as much as possible. */
+        fn size_allocate(&self, widget: &Self::Type, _width: i32, _height: i32, _baseline: i32) {
+            for (node, point) in self.nodes.borrow().values() {
+                let (_, natural_size) = node.preferred_size();
+                node.size_allocate(
+                    &gtk::Allocation::new(
+                        (f64::from(point.x()) - self.hadjustment.borrow().as_ref().unwrap().value())
+                            as i32,
+                        (f64::from(point.y()) - self.vadjustment.borrow().as_ref().unwrap().value())
+                            as i32,
+                        natural_size.width(),
+                        natural_size.height(),
+                    ),
+                    -1,
+                )
+            }
 
+            if let Some(ref hadjustment) = *self.hadjustment.borrow() {
+                self.set_adjustment_values(widget, hadjustment, gtk::Orientation::Horizontal);
+            }
+            if let Some(ref vadjustment) = *self.vadjustment.borrow() {
+                self.set_adjustment_values(widget, vadjustment, gtk::Orientation::Vertical);
+            }
+        }
+
+        fn snapshot(&self, widget: &Self::Type, snapshot: &gtk::Snapshot) {
             let alloc = widget.allocation();
 
-            // Draw all children
+            self.snapshot_background(widget, snapshot);
+
+            // Draw all visible children
             self.nodes
                 .borrow()
                 .values()
-                .for_each(|node| self.instance().snapshot_child(node, snapshot));
+                // Cull nodes from rendering when they are outside the visible canvas area
+                .filter(|(node, _)| alloc.intersect(&node.allocation()).is_some())
+                .for_each(|(node, _)| self.instance().snapshot_child(node, snapshot));
 
-            // Draw all links
+            self.snapshot_links(widget, snapshot);
+        }
+    }
+
+    impl ScrollableImpl for GraphView {}
+
+    impl GraphView {
+        fn snapshot_background(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
+            const GRID_SIZE: f32 = 20.0;
+            const GRID_LINE_WIDTH: f32 = 1.0;
+
+            let alloc = widget.allocation();
+
+            // We need to offset the lines between 0 and (excluding) GRID_SIZE so the grid moves with
+            // the rest of the view when scrolling.
+            // The offset is rounded so the grid is always aligned to a row of pixels.
+            let hadj = self
+                .hadjustment
+                .borrow()
+                .as_ref()
+                .map(|hadjustment| hadjustment.value())
+                .unwrap_or(0.0);
+            let hoffset = ((GRID_SIZE - (hadj as f32 % GRID_SIZE)) % GRID_SIZE).floor();
+            let vadj = self
+                .vadjustment
+                .borrow()
+                .as_ref()
+                .map(|vadjustment| vadjustment.value())
+                .unwrap_or(0.0);
+            let voffset = ((GRID_SIZE - (vadj as f32 % GRID_SIZE)) % GRID_SIZE).floor();
+
+            snapshot.push_repeat(
+                &Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32),
+                Some(&Rect::new(0.0, voffset, alloc.width() as f32, GRID_SIZE)),
+            );
+            let grid_color = RGBA::new(0.137, 0.137, 0.137, 1.0);
+            snapshot.append_linear_gradient(
+                &Rect::new(0.0, voffset, alloc.width() as f32, GRID_LINE_WIDTH),
+                &Point::new(0.0, 0.0),
+                &Point::new(alloc.width() as f32, 0.0),
+                &[
+                    ColorStop::new(0.0, grid_color),
+                    ColorStop::new(1.0, grid_color),
+                ],
+            );
+            snapshot.pop();
+
+            snapshot.push_repeat(
+                &Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32),
+                Some(&Rect::new(hoffset, 0.0, GRID_SIZE, alloc.height() as f32)),
+            );
+            snapshot.append_linear_gradient(
+                &Rect::new(hoffset, 0.0, GRID_LINE_WIDTH, alloc.height() as f32),
+                &Point::new(0.0, 0.0),
+                &Point::new(0.0, alloc.height() as f32),
+                &[
+                    ColorStop::new(0.0, grid_color),
+                    ColorStop::new(1.0, grid_color),
+                ],
+            );
+            snapshot.pop();
+        }
+
+        fn snapshot_links(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
+            let alloc = widget.allocation();
+
             let link_cr = snapshot.append_cairo(&graphene::Rect::new(
                 0.0,
                 0.0,
@@ -135,7 +285,7 @@ mod imp {
             let rgba = widget
                 .style_context()
                 .lookup_color("graphview-link")
-                .unwrap_or_else(|| gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
+                .unwrap_or(gtk::gdk::RGBA::BLACK);
 
             link_cr.set_source_rgba(
                 rgba.red().into(),
@@ -145,6 +295,7 @@ mod imp {
             );
 
             for (link, active) in self.links.borrow().values() {
+                // TODO: Do not draw links when they are outside the view
                 if let Some((from_x, from_y, to_x, to_y)) = self.get_link_coordinates(link) {
                     link_cr.move_to(from_x, from_y);
 
@@ -185,9 +336,7 @@ mod imp {
                 }
             }
         }
-    }
 
-    impl GraphView {
         /// Get coordinates for the drawn link to start at and to end at.
         ///
         /// # Returns
@@ -198,7 +347,7 @@ mod imp {
             // For some reason, gtk4::WidgetExt::translate_coordinates gives me incorrect values,
             // so we manually calculate the needed offsets here.
 
-            let from_port = &nodes.get(&link.node_from)?.get_port(link.port_from)?;
+            let from_port = &nodes.get(&link.node_from)?.0.get_port(link.port_from)?;
             let from_node = from_port
                 .ancestor(Node::static_type())
                 .expect("Port is not a child of a node");
@@ -209,7 +358,7 @@ mod imp {
                 + from_port.allocation().y()
                 + (from_port.allocation().height() / 2);
 
-            let to_port = &nodes.get(&link.node_to)?.get_port(link.port_to)?;
+            let to_port = &nodes.get(&link.node_to)?.0.get_port(link.port_to)?;
             let to_node = to_port
                 .ancestor(Node::static_type())
                 .expect("Port is not a child of a node");
@@ -219,6 +368,48 @@ mod imp {
                 + (to_port.allocation().height() / 2);
 
             Some((from_x.into(), from_y.into(), to_x.into(), to_y.into()))
+        }
+
+        fn set_adjustment(
+            &self,
+            obj: &super::GraphView,
+            adjustment: Option<&gtk::Adjustment>,
+            orientation: gtk::Orientation,
+        ) {
+            match orientation {
+                gtk::Orientation::Horizontal => {
+                    *self.hadjustment.borrow_mut() = adjustment.cloned()
+                }
+                gtk::Orientation::Vertical => *self.vadjustment.borrow_mut() = adjustment.cloned(),
+                _ => unimplemented!(),
+            }
+
+            if let Some(adjustment) = adjustment {
+                adjustment
+                    .connect_value_changed(clone!(@weak obj => move |_|  obj.queue_allocate() ));
+            }
+        }
+
+        fn set_adjustment_values(
+            &self,
+            obj: &super::GraphView,
+            adjustment: &gtk::Adjustment,
+            orientation: gtk::Orientation,
+        ) {
+            let size = match orientation {
+                gtk::Orientation::Horizontal => obj.width(),
+                gtk::Orientation::Vertical => obj.height(),
+                _ => unimplemented!(),
+            };
+
+            adjustment.configure(
+                adjustment.value(),
+                -(CANVAS_SIZE / 2.0),
+                CANVAS_SIZE / 2.0,
+                f64::from(size) * 0.1,
+                f64::from(size) * 0.9,
+                f64::from(size),
+            );
         }
     }
 }
@@ -253,7 +444,7 @@ impl GraphView {
             .values()
             .map(|node| {
                 // Map nodes to their locations
-                self.get_node_position(&node.clone().upcast())
+                self.get_node_position(&node.0.clone().upcast()).unwrap()
             })
             .filter(|(x2, _)| {
                 // Only look for other nodes that have a similar x coordinate
@@ -265,15 +456,16 @@ impl GraphView {
             })
             .map_or(20_f32, |(_x, y)| y + 100.0);
 
-        self.move_node(&node.clone().upcast(), x, y);
-
-        private.nodes.borrow_mut().insert(id, node);
+        private
+            .nodes
+            .borrow_mut()
+            .insert(id, (node, Point::new(x, y)));
     }
 
     pub fn remove_node(&self, id: u32) {
         let private = imp::GraphView::from_instance(self);
         let mut nodes = private.nodes.borrow_mut();
-        if let Some(node) = nodes.remove(&id) {
+        if let Some((node, _)) = nodes.remove(&id) {
             node.unparent();
         } else {
             warn!("Tried to remove non-existant node (id={}) from graph", id);
@@ -283,7 +475,7 @@ impl GraphView {
     pub fn add_port(&self, node_id: u32, port_id: u32, port: crate::view::port::Port) {
         let private = imp::GraphView::from_instance(self);
 
-        if let Some(node) = private.nodes.borrow_mut().get_mut(&node_id) {
+        if let Some((node, _)) = private.nodes.borrow_mut().get_mut(&node_id) {
             node.add_port(port_id, port);
         } else {
             error!(
@@ -296,7 +488,7 @@ impl GraphView {
     pub fn remove_port(&self, id: u32, node_id: u32) {
         let private = imp::GraphView::from_instance(self);
         let nodes = private.nodes.borrow();
-        if let Some(node) = nodes.get(&node_id) {
+        if let Some((node, _)) = nodes.get(&node_id) {
             node.remove_port(id);
         }
     }
@@ -326,43 +518,33 @@ impl GraphView {
     }
 
     /// Get the position of the specified node inside the graphview.
-    pub(super) fn get_node_position(&self, node: &gtk::Widget) -> (f32, f32) {
-        let layout_manager = self
-            .layout_manager()
-            .expect("Failed to get layout manager")
-            .dynamic_cast::<gtk::FixedLayout>()
-            .expect("Failed to cast to FixedLayout");
-
-        let node = layout_manager
-            .layout_child(node)
-            .dynamic_cast::<gtk::FixedLayoutChild>()
-            .expect("Could not cast to FixedLayoutChild");
-        node.transform()
-            .expect("Failed to obtain transform from layout child")
-            .to_translate()
+    pub(super) fn get_node_position(&self, node: &Node) -> Option<(f32, f32)> {
+        self.imp()
+            .nodes
+            .borrow()
+            .get(&node.pipewire_id())
+            .map(|(_, point)| (point.x(), point.y()))
     }
 
-    pub(super) fn move_node(&self, node: &gtk::Widget, x: f32, y: f32) {
-        let layout_manager = self
-            .layout_manager()
-            .expect("Failed to get layout manager")
-            .dynamic_cast::<gtk::FixedLayout>()
-            .expect("Failed to cast to FixedLayout");
+    pub(super) fn move_node(&self, widget: &Node, x: f32, y: f32) {
+        let mut nodes = self.imp().nodes.borrow_mut();
+        let mut node = nodes
+            .get_mut(&widget.pipewire_id())
+            .expect("Node is not on the graph");
 
-        let transform = gsk::Transform::new()
-            // Nodes should not be able to be dragged out of the view, so we use `max(coordinate, 0.0)` to prevent that.
-            .translate(&graphene::Point::new(f32::max(x, 0.0), f32::max(y, 0.0)))
-            .unwrap();
+        // Clamp the new position to within the graph, so a node can't be moved outside it and be lost.
+        node.1 = Point::new(
+            x.clamp(
+                -(CANVAS_SIZE / 2.0) as f32,
+                (CANVAS_SIZE / 2.0) as f32 - widget.width() as f32,
+            ),
+            y.clamp(
+                -(CANVAS_SIZE / 2.0) as f32,
+                (CANVAS_SIZE / 2.0) as f32 - widget.height() as f32,
+            ),
+        );
 
-        layout_manager
-            .layout_child(node)
-            .dynamic_cast::<gtk::FixedLayoutChild>()
-            .expect("Could not cast to FixedLayoutChild")
-            .set_transform(&transform);
-
-        // FIXME: If links become proper widgets,
-        // we don't need to redraw the full graph everytime.
-        self.queue_draw();
+        self.queue_allocate();
     }
 }
 
