@@ -56,6 +56,10 @@ mod imp {
             let scrollwindow = gtk::ScrolledWindow::builder()
                 .child(&self.graphview)
                 .build();
+            let headerbar = gtk::HeaderBar::new();
+            let zoomentry = view::ZoomEntry::new(&self.graphview);
+            headerbar.pack_end(&zoomentry);
+
             let window = gtk::ApplicationWindow::builder()
                 .application(app)
                 .default_width(1280)
@@ -66,6 +70,18 @@ mod imp {
             window
                 .settings()
                 .set_gtk_application_prefer_dark_theme(true);
+            window.set_titlebar(Some(&headerbar));
+
+            let zoom_set_action =
+                gio::SimpleAction::new("set-zoom", Some(&f64::static_variant_type()));
+            zoom_set_action.connect_activate(
+                clone!(@weak self.graphview as graphview => move|_, param| {
+                    let zoom_factor = param.unwrap().get::<f64>().unwrap();
+                    graphview.set_zoom_factor(zoom_factor)
+                }),
+            );
+            window.add_action(&zoom_set_action);
+
             window.show();
         }
 
