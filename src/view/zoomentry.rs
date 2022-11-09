@@ -68,7 +68,7 @@ mod imp {
                 .connect_clicked(clone!(@weak obj => move |_| {
                     let graphview = obj.imp().graphview.borrow();
                     if let Some(ref graphview) = *graphview {
-                        graphview.set_zoom_factor(graphview.zoom_factor() - 0.1);
+                        graphview.set_zoom_factor(graphview.zoom_factor() - 0.1, None);
                     }
                 }));
 
@@ -76,7 +76,7 @@ mod imp {
                 .connect_clicked(clone!(@weak obj => move |_| {
                     let graphview = obj.imp().graphview.borrow();
                     if let Some(ref graphview) = *graphview {
-                        graphview.set_zoom_factor(graphview.zoom_factor() + 0.1);
+                        graphview.set_zoom_factor(graphview.zoom_factor() + 0.1, None);
                     }
                 }));
 
@@ -85,7 +85,7 @@ mod imp {
                     if let Ok(zoom_factor) = entry.text().trim_matches('%').parse::<f64>() {
                         let graphview = obj.imp().graphview.borrow();
                         if let Some(ref graphview) = *graphview {
-                            graphview.set_zoom_factor(zoom_factor / 100.0);
+                            graphview.set_zoom_factor(zoom_factor / 100.0, None);
                         }
                     }
                 }));

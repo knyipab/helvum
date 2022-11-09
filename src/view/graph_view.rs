@@ -65,6 +65,9 @@ mod imp {
         pub zoom_factor: Cell<f64>,
         /// This keeps track of an ongoing node drag operation.
         pub dragged_node: RefCell<Option<DragState>>,
+        // Memorized data for an in-progress zoom gesture
+        pub zoom_gesture_initial_zoom: Cell<Option<f64>>,
+        pub zoom_gesture_anchor: Cell<Option<(f64, f64)>>,
     }
 
     #[glib::object_subclass]
@@ -87,6 +90,7 @@ mod imp {
 
             self.setup_node_dragging();
             self.setup_scroll_zooming();
+            self.setup_zoom_gesture();
         }
 
         fn dispose(&self, _obj: &Self::Type) {
@@ -316,10 +320,7 @@ mod imp {
                         .widget()
                         .downcast::<super::GraphView>()
                         .unwrap();
-                    widget.set_zoom_factor(
-                        (widget.zoom_factor() + (0.1 * -delta_y))
-                            .clamp(super::GraphView::ZOOM_MIN, super::GraphView::ZOOM_MAX),
-                    );
+                    widget.set_zoom_factor(widget.zoom_factor() + (0.1 * -delta_y), None);
 
                     gtk::Inhibit(true)
                 } else {
@@ -327,6 +328,34 @@ mod imp {
                 }
             });
             obj.add_controller(&scroll_controller);
+        }
+
+        fn setup_zoom_gesture(&self) {
+            let zoom_gesture = gtk::GestureZoom::new();
+            zoom_gesture.connect_begin(|gesture, _| {
+                let widget = gesture.widget().downcast::<super::GraphView>().unwrap();
+
+                widget
+                    .imp()
+                    .zoom_gesture_initial_zoom
+                    .set(Some(widget.zoom_factor()));
+                widget
+                    .imp()
+                    .zoom_gesture_anchor
+                    .set(gesture.bounding_box_center());
+            });
+            zoom_gesture.connect_scale_changed(move |gesture, delta| {
+                let widget = gesture.widget().downcast::<super::GraphView>().unwrap();
+
+                let initial_zoom = widget
+                    .imp()
+                    .zoom_gesture_initial_zoom
+                    .get()
+                    .expect("Initial zoom not set during zoom gesture");
+
+                widget.set_zoom_factor(initial_zoom * delta, gesture.bounding_box_center());
+            });
+            self.instance().add_controller(&zoom_gesture);
         }
 
         fn snapshot_background(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
@@ -555,10 +584,38 @@ impl GraphView {
     ///
     /// A factor of 1.0 is equivalent to 100% zoom, 0.5 to 50% zoom etc.
     ///
-    /// Note that the zoom level is limited to between 30% and 300%.
-    /// See [`ZOOM_MIN`] and [`ZOOM_MAX`].
-    pub fn set_zoom_factor(&self, scale_factor: f64) {
-        self.set_property("zoom-factor", scale_factor)
+    /// An optional anchor (in canvas-space coordinates) can be specified, which will be used as the center of the zoom,
+    /// so that its position stays fixed.
+    /// If no anchor is specified, the middle of the screen is used instead.
+    ///
+    /// Note that the zoom level is [clamped](`f64::clamp`) to between 30% and 300%.
+    /// See [`Self::ZOOM_MIN`] and [`Self::ZOOM_MAX`].
+    pub fn set_zoom_factor(&self, zoom_factor: f64, anchor: Option<(f64, f64)>) {
+        let zoom_factor = zoom_factor.clamp(Self::ZOOM_MIN, Self::ZOOM_MAX);
+
+        let (anchor_x_screen, anchor_y_screen) = anchor.unwrap_or_else(|| {
+            (
+                self.allocation().width() as f64 / 2.0,
+                self.allocation().height() as f64 / 2.0,
+            )
+        });
+
+        let old_zoom = self.imp().zoom_factor.get();
+        let hadjustment_ref = self.imp().hadjustment.borrow();
+        let vadjustment_ref = self.imp().vadjustment.borrow();
+        let hadjustment = hadjustment_ref.as_ref().unwrap();
+        let vadjustment = vadjustment_ref.as_ref().unwrap();
+
+        let x_total = (anchor_x_screen + hadjustment.value()) / old_zoom;
+        let y_total = (anchor_y_screen + vadjustment.value()) / old_zoom;
+
+        let new_hadjustment = x_total * zoom_factor - anchor_x_screen;
+        let new_vadjustment = y_total * zoom_factor - anchor_y_screen;
+
+        hadjustment.set_value(new_hadjustment);
+        vadjustment.set_value(new_vadjustment);
+
+        self.set_property("zoom-factor", zoom_factor);
     }
 
     pub fn add_node(&self, id: u32, node: Node, node_type: Option<NodeType>) {

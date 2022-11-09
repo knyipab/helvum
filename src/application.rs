@@ -77,7 +77,7 @@ mod imp {
             zoom_set_action.connect_activate(
                 clone!(@weak self.graphview as graphview => move|_, param| {
                     let zoom_factor = param.unwrap().get::<f64>().unwrap();
-                    graphview.set_zoom_factor(zoom_factor)
+                    graphview.set_zoom_factor(zoom_factor, None)
                 }),
             );
             window.add_action(&zoom_set_action);
