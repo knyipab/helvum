@@ -18,7 +18,9 @@ use super::{Node, Port};
 
 use gtk::{
     glib::{self, clone},
-    graphene::{self, Point},
+    graphene,
+    graphene::Point,
+    gsk,
     prelude::*,
     subclass::prelude::*,
 };
@@ -33,11 +35,20 @@ const CANVAS_SIZE: f64 = 5000.0;
 mod imp {
     use super::*;
 
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
 
     use gtk::{gdk::RGBA, graphene::Rect, gsk::ColorStop};
     use log::warn;
     use once_cell::sync::Lazy;
+
+    pub struct DragState {
+        node: glib::WeakRef<Node>,
+        /// This stores the offset of the pointer to the origin of the node,
+        /// so that we can keep the pointer over the same position when moving the node
+        ///
+        /// The offset is normalized to the default zoom-level of 1.0.
+        offset: Point,
+    }
 
     #[derive(Default)]
     pub struct GraphView {
@@ -47,8 +58,9 @@ mod imp {
         pub(super) links: RefCell<HashMap<u32, (crate::PipewireLink, bool)>>,
         pub hadjustment: RefCell<Option<gtk::Adjustment>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
-        /// When a node drag is ongoing, this stores the dragged node and the initial coordinates on the widget surface.
-        pub drag_state: RefCell<Option<(Node, Point)>>,
+        pub zoom_factor: Cell<f64>,
+        /// This keeps track of an ongoing node drag operation.
+        pub dragged_node: RefCell<Option<DragState>>,
     }
 
     #[glib::object_subclass]
@@ -69,55 +81,7 @@ mod imp {
 
             obj.set_overflow(gtk::Overflow::Hidden);
 
-            let drag_controller = gtk::GestureDrag::new();
-
-            drag_controller.connect_drag_begin(|drag_controller, x, y| {
-                let widget = drag_controller
-                    .widget()
-                    .dynamic_cast::<Self::Type>()
-                    .expect("drag-begin event is not on the GraphView");
-                let mut drag_state = widget.imp().drag_state.borrow_mut();
-
-                // pick() should at least return the widget itself.
-                let target = widget
-                    .pick(x, y, gtk::PickFlags::DEFAULT)
-                    .expect("drag-begin pick() did not return a widget");
-                *drag_state = if target.ancestor(Port::static_type()).is_some() {
-                    // The user targeted a port, so the dragging should be handled by the Port
-                    // component instead of here.
-                    None
-                } else if let Some(target) = target.ancestor(Node::static_type()) {
-                    // The user targeted a Node without targeting a specific Port.
-                    // Drag the Node around the screen.
-                    let node = target.dynamic_cast_ref::<Node>().unwrap();
-
-                    // We use the upper-left corner of the widget as the start position instead of the actual
-                    // cursor location, this lets us move the node around easier because we don't need to
-                    // account for where the cursor is on the node.
-                    let alloc = node.allocation();
-                    Some((node.clone(), Point::new(alloc.x() as f32, alloc.y() as f32)))
-                } else {
-                    None
-                }
-            });
-            drag_controller.connect_drag_update(|drag_controller, x, y| {
-                let widget = drag_controller
-                    .widget()
-                    .dynamic_cast::<Self::Type>()
-                    .expect("drag-update event is not on the GraphView");
-                let drag_state = widget.imp().drag_state.borrow();
-                let hadj = widget.imp().hadjustment.borrow();
-                let vadj = widget.imp().vadjustment.borrow();
-
-                if let Some((ref node, ref start_point)) = *drag_state {
-                    widget.move_node(
-                        node,
-                        start_point.x() + hadj.as_ref().unwrap().value() as f32 + x as f32,
-                        start_point.y() + vadj.as_ref().unwrap().value() as f32 + y as f32,
-                    );
-                }
-            });
-            obj.add_controller(&drag_controller);
+            self.setup_node_dragging();
         }
 
         fn dispose(&self, _obj: &Self::Type) {
@@ -134,6 +98,15 @@ mod imp {
                     glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vadjustment"),
                     glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("hscroll-policy"),
                     glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vscroll-policy"),
+                    glib::ParamSpecDouble::new(
+                        "zoom-factor",
+                        "zoom-factor",
+                        "zoom-factor",
+                        0.3,
+                        4.0,
+                        1.0,
+                        glib::ParamFlags::CONSTRUCT | glib::ParamFlags::READWRITE,
+                    ),
                 ]
             });
 
@@ -145,6 +118,7 @@ mod imp {
                 "hadjustment" => self.hadjustment.borrow().to_value(),
                 "vadjustment" => self.vadjustment.borrow().to_value(),
                 "hscroll-policy" | "vscroll-policy" => gtk::ScrollablePolicy::Natural.to_value(),
+                "zoom-factor" => self.zoom_factor.get().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -164,26 +138,33 @@ mod imp {
                     self.set_adjustment(obj, value.get().ok(), gtk::Orientation::Vertical)
                 }
                 "hscroll-policy" | "vscroll-policy" => {}
+                "zoom-factor" => {
+                    self.zoom_factor.set(value.get().unwrap());
+                    obj.queue_allocate();
+                }
                 _ => unimplemented!(),
             }
         }
     }
 
     impl WidgetImpl for GraphView {
-        fn size_allocate(&self, widget: &Self::Type, _width: i32, _height: i32, _baseline: i32) {
+        fn size_allocate(&self, widget: &Self::Type, _width: i32, _height: i32, baseline: i32) {
+            let zoom_factor = self.zoom_factor.get();
+
             for (node, point) in self.nodes.borrow().values() {
                 let (_, natural_size) = node.preferred_size();
-                node.size_allocate(
-                    &gtk::Allocation::new(
-                        (f64::from(point.x()) - self.hadjustment.borrow().as_ref().unwrap().value())
-                            as i32,
-                        (f64::from(point.y()) - self.vadjustment.borrow().as_ref().unwrap().value())
-                            as i32,
-                        natural_size.width(),
-                        natural_size.height(),
-                    ),
-                    -1,
-                )
+
+                let transform = self
+                    .canvas_space_to_screen_space_transform()
+                    .translate(point)
+                    .unwrap();
+
+                node.allocate(
+                    (natural_size.width() as f64 / zoom_factor).ceil() as i32,
+                    (natural_size.height() as f64 / zoom_factor).ceil() as i32,
+                    baseline,
+                    Some(&transform),
+                );
             }
 
             if let Some(ref hadjustment) = *self.hadjustment.borrow() {
@@ -214,13 +195,114 @@ mod imp {
     impl ScrollableImpl for GraphView {}
 
     impl GraphView {
+        /// Returns a [`gsk::Transform`] matrix that can translate from canvas space to screen space.
+        ///
+        /// Canvas space is non-zoomed, and (0, 0) is fixed at the middle of the graph. \
+        /// Screen space is zoomed and adjusted for scrolling, (0, 0) is at the top-left corner of the window.
+        ///
+        /// This is the inverted form of [`Self::screen_space_to_canvas_space_transform()`].
+        fn canvas_space_to_screen_space_transform(&self) -> gsk::Transform {
+            let hadj = self.hadjustment.borrow().as_ref().unwrap().value();
+            let vadj = self.vadjustment.borrow().as_ref().unwrap().value();
+            let zoom_factor = self.zoom_factor.get();
+
+            gsk::Transform::new()
+                .translate(&Point::new(-hadj as f32, -vadj as f32))
+                .unwrap()
+                .scale(zoom_factor as f32, zoom_factor as f32)
+                .unwrap()
+        }
+
+        /// Returns a [`gsk::Transform`] matrix that can translate from screen space to canvas space.
+        ///
+        /// This is the inverted form of [`Self::canvas_space_to_screen_space_transform()`], see that function for a more detailed explantion.
+        fn screen_space_to_canvas_space_transform(&self) -> gsk::Transform {
+            self.canvas_space_to_screen_space_transform()
+                .invert()
+                .unwrap()
+        }
+
+        fn setup_node_dragging(&self) {
+            let obj = self.instance();
+            let drag_controller = gtk::GestureDrag::new();
+
+            drag_controller.connect_drag_begin(|drag_controller, x, y| {
+                let widget = drag_controller
+                    .widget()
+                    .dynamic_cast::<super::GraphView>()
+                    .expect("drag-begin event is not on the GraphView");
+                let mut dragged_node = widget.imp().dragged_node.borrow_mut();
+
+                // pick() should at least return the widget itself.
+                let target = widget
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .expect("drag-begin pick() did not return a widget");
+                *dragged_node = if target.ancestor(Port::static_type()).is_some() {
+                    // The user targeted a port, so the dragging should be handled by the Port
+                    // component instead of here.
+                    None
+                } else if let Some(target) = target.ancestor(Node::static_type()) {
+                    // The user targeted a Node without targeting a specific Port.
+                    // Drag the Node around the screen.
+                    let node = target.dynamic_cast_ref::<Node>().unwrap();
+
+                    let Some(canvas_node_pos) = widget.node_position(node) else { return };
+                    let canvas_cursor_pos = widget
+                        .imp()
+                        .screen_space_to_canvas_space_transform()
+                        .transform_point(&Point::new(x as f32, y as f32));
+
+                    Some(DragState {
+                        node: node.clone().downgrade(),
+                        offset: Point::new(
+                            canvas_cursor_pos.x() - canvas_node_pos.x(),
+                            canvas_cursor_pos.y() - canvas_node_pos.y(),
+                        ),
+                    })
+                } else {
+                    None
+                }
+            });
+            drag_controller.connect_drag_update(|drag_controller, x, y| {
+                let widget = drag_controller
+                    .widget()
+                    .dynamic_cast::<super::GraphView>()
+                    .expect("drag-update event is not on the GraphView");
+                let dragged_node = widget.imp().dragged_node.borrow();
+                let Some(DragState { node, offset }) = dragged_node.as_ref() else { return };
+                let Some(node) = node.upgrade() else { return };
+
+                let (start_x, start_y) = drag_controller
+                    .start_point()
+                    .expect("Drag has no start point");
+
+                let onscreen_node_origin = Point::new((start_x + x) as f32, (start_y + y) as f32);
+                let transform = widget.imp().screen_space_to_canvas_space_transform();
+                let canvas_node_origin = transform.transform_point(&onscreen_node_origin);
+
+                widget.move_node(
+                    &node,
+                    &Point::new(
+                        canvas_node_origin.x() - offset.x(),
+                        canvas_node_origin.y() - offset.y(),
+                    ),
+                );
+            });
+            obj.add_controller(&drag_controller);
+        }
+
         fn snapshot_background(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
-            const GRID_SIZE: f32 = 20.0;
-            const GRID_LINE_WIDTH: f32 = 1.0;
+            // Grid size and line width during neutral zoom (factor 1.0).
+            const NORMAL_GRID_SIZE: f32 = 20.0;
+            const NORMAL_GRID_LINE_WIDTH: f32 = 1.0;
+
+            let zoom_factor = self.zoom_factor.get();
+            let grid_size = NORMAL_GRID_SIZE * zoom_factor as f32;
+            let grid_line_width = NORMAL_GRID_LINE_WIDTH * zoom_factor as f32;
 
             let alloc = widget.allocation();
 
-            // We need to offset the lines between 0 and (excluding) GRID_SIZE so the grid moves with
+            // We need to offset the lines between 0 and (excluding) `grid_size` so the grid moves with
             // the rest of the view when scrolling.
             // The offset is rounded so the grid is always aligned to a row of pixels.
             let hadj = self
@@ -229,22 +311,22 @@ mod imp {
                 .as_ref()
                 .map(|hadjustment| hadjustment.value())
                 .unwrap_or(0.0);
-            let hoffset = ((GRID_SIZE - (hadj as f32 % GRID_SIZE)) % GRID_SIZE).floor();
+            let hoffset = (grid_size - (hadj as f32 % grid_size)) % grid_size;
             let vadj = self
                 .vadjustment
                 .borrow()
                 .as_ref()
                 .map(|vadjustment| vadjustment.value())
                 .unwrap_or(0.0);
-            let voffset = ((GRID_SIZE - (vadj as f32 % GRID_SIZE)) % GRID_SIZE).floor();
+            let voffset = (grid_size - (vadj as f32 % grid_size)) % grid_size;
 
             snapshot.push_repeat(
                 &Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32),
-                Some(&Rect::new(0.0, voffset, alloc.width() as f32, GRID_SIZE)),
+                Some(&Rect::new(0.0, voffset, alloc.width() as f32, grid_size)),
             );
             let grid_color = RGBA::new(0.137, 0.137, 0.137, 1.0);
             snapshot.append_linear_gradient(
-                &Rect::new(0.0, voffset, alloc.width() as f32, GRID_LINE_WIDTH),
+                &Rect::new(0.0, voffset, alloc.width() as f32, grid_line_width),
                 &Point::new(0.0, 0.0),
                 &Point::new(alloc.width() as f32, 0.0),
                 &[
@@ -256,10 +338,10 @@ mod imp {
 
             snapshot.push_repeat(
                 &Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32),
-                Some(&Rect::new(hoffset, 0.0, GRID_SIZE, alloc.height() as f32)),
+                Some(&Rect::new(hoffset, 0.0, grid_size, alloc.height() as f32)),
             );
             snapshot.append_linear_gradient(
-                &Rect::new(hoffset, 0.0, GRID_LINE_WIDTH, alloc.height() as f32),
+                &Rect::new(hoffset, 0.0, grid_line_width, alloc.height() as f32),
                 &Point::new(0.0, 0.0),
                 &Point::new(0.0, alloc.height() as f32),
                 &[
@@ -280,7 +362,7 @@ mod imp {
                 alloc.height() as f32,
             ));
 
-            link_cr.set_line_width(2.0);
+            link_cr.set_line_width(2.0 * self.zoom_factor.get());
 
             let rgba = widget
                 .style_context()
@@ -344,30 +426,29 @@ mod imp {
         fn get_link_coordinates(&self, link: &crate::PipewireLink) -> Option<(f64, f64, f64, f64)> {
             let nodes = self.nodes.borrow();
 
-            // For some reason, gtk4::WidgetExt::translate_coordinates gives me incorrect values,
-            // so we manually calculate the needed offsets here.
+            let output_port = &nodes.get(&link.node_from)?.0.get_port(link.port_from)?;
 
-            let from_port = &nodes.get(&link.node_from)?.0.get_port(link.port_from)?;
-            let from_node = from_port
-                .ancestor(Node::static_type())
-                .expect("Port is not a child of a node");
-            let from_x = from_node.allocation().x()
-                + from_port.allocation().x()
-                + from_port.allocation().width();
-            let from_y = from_node.allocation().y()
-                + from_port.allocation().y()
-                + (from_port.allocation().height() / 2);
+            let output_port_padding =
+                (output_port.allocated_width() - output_port.width()) as f64 / 2.0;
 
-            let to_port = &nodes.get(&link.node_to)?.0.get_port(link.port_to)?;
-            let to_node = to_port
-                .ancestor(Node::static_type())
-                .expect("Port is not a child of a node");
-            let to_x = to_node.allocation().x() + to_port.allocation().x();
-            let to_y = to_node.allocation().y()
-                + to_port.allocation().y()
-                + (to_port.allocation().height() / 2);
+            let (from_x, from_y) = output_port.translate_coordinates(
+                &self.instance(),
+                output_port.width() as f64 + output_port_padding,
+                (output_port.height() / 2) as f64,
+            )?;
 
-            Some((from_x.into(), from_y.into(), to_x.into(), to_y.into()))
+            let input_port = &nodes.get(&link.node_to)?.0.get_port(link.port_to)?;
+
+            let input_port_padding =
+                (input_port.allocated_width() - input_port.width()) as f64 / 2.0;
+
+            let (to_x, to_y) = input_port.translate_coordinates(
+                &self.instance(),
+                -input_port_padding,
+                (input_port.height() / 2) as f64,
+            )?;
+
+            Some((from_x, from_y, to_x, to_y))
         }
 
         fn set_adjustment(
@@ -401,14 +482,15 @@ mod imp {
                 gtk::Orientation::Vertical => obj.height(),
                 _ => unimplemented!(),
             };
+            let zoom_factor = self.zoom_factor.get();
 
             adjustment.configure(
                 adjustment.value(),
-                -(CANVAS_SIZE / 2.0),
-                CANVAS_SIZE / 2.0,
-                f64::from(size) * 0.1,
-                f64::from(size) * 0.9,
-                f64::from(size),
+                -(CANVAS_SIZE / 2.0) * zoom_factor,
+                (CANVAS_SIZE / 2.0) * zoom_factor,
+                (f64::from(size) * 0.1) * zoom_factor,
+                (f64::from(size) * 0.9) * zoom_factor,
+                f64::from(size) * zoom_factor,
             );
         }
     }
@@ -420,8 +502,25 @@ glib::wrapper! {
 }
 
 impl GraphView {
+    pub const ZOOM_MIN: f64 = 0.3;
+    pub const ZOOM_MAX: f64 = 4.0;
+
     pub fn new() -> Self {
         glib::Object::new(&[]).expect("Failed to create GraphView")
+    }
+
+    pub fn zoom_factor(&self) -> f64 {
+        self.property("zoom-factor")
+    }
+
+    /// Set the scale factor.
+    ///
+    /// A factor of 1.0 is equivalent to 100% zoom, 0.5 to 50% zoom etc.
+    ///
+    /// Note that the zoom level is limited to between 30% and 300%.
+    /// See [`ZOOM_MIN`] and [`ZOOM_MAX`].
+    pub fn set_zoom_factor(&self, scale_factor: f64) {
+        self.set_property("zoom-factor", scale_factor)
     }
 
     pub fn add_node(&self, id: u32, node: Node, node_type: Option<NodeType>) {
@@ -444,7 +543,8 @@ impl GraphView {
             .values()
             .map(|node| {
                 // Map nodes to their locations
-                self.get_node_position(&node.0.clone().upcast()).unwrap()
+                let point = self.node_position(&node.0.clone().upcast()).unwrap();
+                (point.x(), point.y())
             })
             .filter(|(x2, _)| {
                 // Only look for other nodes that have a similar x coordinate
@@ -518,15 +618,17 @@ impl GraphView {
     }
 
     /// Get the position of the specified node inside the graphview.
-    pub(super) fn get_node_position(&self, node: &Node) -> Option<(f32, f32)> {
+    ///
+    /// The returned position is in canvas-space (non-zoomed, (0, 0) fixed in the middle of the canvas).
+    pub(super) fn node_position(&self, node: &Node) -> Option<Point> {
         self.imp()
             .nodes
             .borrow()
             .get(&node.pipewire_id())
-            .map(|(_, point)| (point.x(), point.y()))
+            .map(|(_, point)| *point)
     }
 
-    pub(super) fn move_node(&self, widget: &Node, x: f32, y: f32) {
+    pub(super) fn move_node(&self, widget: &Node, point: &Point) {
         let mut nodes = self.imp().nodes.borrow_mut();
         let mut node = nodes
             .get_mut(&widget.pipewire_id())
@@ -534,11 +636,11 @@ impl GraphView {
 
         // Clamp the new position to within the graph, so a node can't be moved outside it and be lost.
         node.1 = Point::new(
-            x.clamp(
+            point.x().clamp(
                 -(CANVAS_SIZE / 2.0) as f32,
                 (CANVAS_SIZE / 2.0) as f32 - widget.width() as f32,
             ),
-            y.clamp(
+            point.y().clamp(
                 -(CANVAS_SIZE / 2.0) as f32,
                 (CANVAS_SIZE / 2.0) as f32 - widget.height() as f32,
             ),
