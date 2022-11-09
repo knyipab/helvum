@@ -37,7 +37,11 @@ mod imp {
 
     use std::cell::{Cell, RefCell};
 
-    use gtk::{gdk::RGBA, graphene::Rect, gsk::ColorStop};
+    use gtk::{
+        gdk::{self, RGBA},
+        graphene::Rect,
+        gsk::ColorStop,
+    };
     use log::warn;
     use once_cell::sync::Lazy;
 
@@ -82,6 +86,7 @@ mod imp {
             obj.set_overflow(gtk::Overflow::Hidden);
 
             self.setup_node_dragging();
+            self.setup_scroll_zooming();
         }
 
         fn dispose(&self, _obj: &Self::Type) {
@@ -289,6 +294,39 @@ mod imp {
                 );
             });
             obj.add_controller(&drag_controller);
+        }
+
+        fn setup_scroll_zooming(&self) {
+            let obj = self.instance();
+
+            // We're only interested in the vertical axis, but for devices like touchpads,
+            // not capturing a small accidental horizontal move may cause the scroll to be disrupted if a widget
+            // higher up captures it instead.
+            let scroll_controller =
+                gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+
+            scroll_controller.connect_scroll(|eventcontroller, _, delta_y| {
+                let event = eventcontroller.current_event().unwrap(); // We are inside the event handler, so it must have an event
+
+                if event
+                    .modifier_state()
+                    .contains(gdk::ModifierType::CONTROL_MASK)
+                {
+                    let widget = eventcontroller
+                        .widget()
+                        .downcast::<super::GraphView>()
+                        .unwrap();
+                    widget.set_zoom_factor(
+                        (widget.zoom_factor() + (0.1 * -delta_y))
+                            .clamp(super::GraphView::ZOOM_MIN, super::GraphView::ZOOM_MAX),
+                    );
+
+                    gtk::Inhibit(true)
+                } else {
+                    gtk::Inhibit(false)
+                }
+            });
+            obj.add_controller(&scroll_controller);
         }
 
         fn snapshot_background(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
