@@ -67,35 +67,29 @@ mod imp {
     }
 
     impl ObjectImpl for Port {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
-            self.label.set_parent(obj);
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.label.set_parent(&*self.obj());
         }
 
-        fn dispose(&self, _obj: &Self::Type) {
+        fn dispose(&self) {
             self.label.unparent()
         }
 
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
                 vec![
-                    glib::ParamSpecUInt::new(
-                        "pipewire-id",
-                        "pipewire-id",
-                        "pipewire-id",
-                        u32::MIN,
-                        u32::MAX,
-                        0,
-                        ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY,
-                    ),
-                    glib::ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
+                    glib::ParamSpecUInt::builder("pipewire-id")
+                        .flags(ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY)
+                        .build(),
+                    glib::ParamSpecString::builder("name").build(),
                 ]
             });
 
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
                 "pipewire-id" => self.pipewire_id.get().unwrap().to_value(),
                 "name" => self.label.text().to_value(),
@@ -103,13 +97,7 @@ mod imp {
             }
         }
 
-        fn set_property(
-            &self,
-            _obj: &Self::Type,
-            _id: usize,
-            value: &glib::Value,
-            pspec: &glib::ParamSpec,
-        ) {
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "name" => self.label.set_text(value.get().unwrap()),
                 "pipewire-id" => self.pipewire_id.set(value.get().unwrap()).unwrap(),
@@ -119,14 +107,10 @@ mod imp {
 
         fn signals() -> &'static [Signal] {
             static SIGNALS: Lazy<Vec<Signal>> = Lazy::new(|| {
-                vec![Signal::builder(
-                    "port-toggled",
+                vec![Signal::builder("port-toggled")
                     // Provide id of output port and input port to signal handler.
-                    &[<u32>::static_type().into(), <u32>::static_type().into()],
-                    // signal handler sends back nothing.
-                    <()>::static_type().into(),
-                )
-                .build()]
+                    .param_types([<u32>::static_type(), <u32>::static_type()])
+                    .build()]
             });
 
             SIGNALS.as_ref()
@@ -143,13 +127,14 @@ glib::wrapper! {
 impl Port {
     pub fn new(id: u32, name: &str, direction: Direction, media_type: Option<MediaType>) -> Self {
         // Create the widget and initialize needed fields
-        let res: Self = glib::Object::new(&[("pipewire-id", &id), ("name", &name)])
-            .expect("Failed to create Port");
+        let res: Self = glib::Object::builder()
+            .property("pipewire-id", &id)
+            .property("name", &name)
+            .build();
 
-        let private = imp::Port::from_instance(&res);
+        let imp = res.imp();
 
-        private
-            .direction
+        imp.direction
             .set(direction)
             .expect("Port direction already set");
 
@@ -172,7 +157,7 @@ impl Port {
             trace!("Drag from port {} was cancelled", id);
             false
         });
-        res.add_controller(&drag_src);
+        res.add_controller(drag_src);
 
         // The drop target will accept either a `ForwardLink` or `ReversedLink` depending in its own direction,
         // and use it to emit its `port-toggled` signal.
@@ -217,7 +202,7 @@ impl Port {
                 );
             }
         }
-        res.add_controller(&drop_target);
+        res.add_controller(drop_target);
 
         // Display a grab cursor when the mouse is over the port so the user knows it can be dragged to another port.
         res.set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
@@ -248,7 +233,9 @@ impl Port {
     }
 
     pub fn direction(&self) -> &Direction {
-        let private = imp::Port::from_instance(self);
-        private.direction.get().expect("Port direction is not set")
+        self.imp()
+            .direction
+            .get()
+            .expect("Port direction is not set")
     }
 }

@@ -83,17 +83,17 @@ mod imp {
     }
 
     impl ObjectImpl for GraphView {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
+        fn constructed(&self) {
+            self.parent_constructed();
 
-            obj.set_overflow(gtk::Overflow::Hidden);
+            self.obj().set_overflow(gtk::Overflow::Hidden);
 
             self.setup_node_dragging();
             self.setup_scroll_zooming();
             self.setup_zoom_gesture();
         }
 
-        fn dispose(&self, _obj: &Self::Type) {
+        fn dispose(&self) {
             self.nodes
                 .borrow()
                 .values()
@@ -107,22 +107,19 @@ mod imp {
                     glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vadjustment"),
                     glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("hscroll-policy"),
                     glib::ParamSpecOverride::for_interface::<gtk::Scrollable>("vscroll-policy"),
-                    glib::ParamSpecDouble::new(
-                        "zoom-factor",
-                        "zoom-factor",
-                        "zoom-factor",
-                        0.3,
-                        4.0,
-                        1.0,
-                        glib::ParamFlags::CONSTRUCT | glib::ParamFlags::READWRITE,
-                    ),
+                    glib::ParamSpecDouble::builder("zoom-factor")
+                        .minimum(0.3)
+                        .maximum(4.0)
+                        .default_value(1.0)
+                        .flags(glib::ParamFlags::CONSTRUCT | glib::ParamFlags::READWRITE)
+                        .build(),
                 ]
             });
 
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
                 "hadjustment" => self.hadjustment.borrow().to_value(),
                 "vadjustment" => self.vadjustment.borrow().to_value(),
@@ -132,19 +129,15 @@ mod imp {
             }
         }
 
-        fn set_property(
-            &self,
-            obj: &Self::Type,
-            _id: usize,
-            value: &glib::Value,
-            pspec: &glib::ParamSpec,
-        ) {
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            let obj = self.obj();
+
             match pspec.name() {
                 "hadjustment" => {
-                    self.set_adjustment(obj, value.get().ok(), gtk::Orientation::Horizontal)
+                    self.set_adjustment(&obj, value.get().ok(), gtk::Orientation::Horizontal)
                 }
                 "vadjustment" => {
-                    self.set_adjustment(obj, value.get().ok(), gtk::Orientation::Vertical)
+                    self.set_adjustment(&obj, value.get().ok(), gtk::Orientation::Vertical)
                 }
                 "hscroll-policy" | "vscroll-policy" => {}
                 "zoom-factor" => {
@@ -157,7 +150,9 @@ mod imp {
     }
 
     impl WidgetImpl for GraphView {
-        fn size_allocate(&self, widget: &Self::Type, _width: i32, _height: i32, baseline: i32) {
+        fn size_allocate(&self, _width: i32, _height: i32, baseline: i32) {
+            let widget = &*self.obj();
+
             let zoom_factor = self.zoom_factor.get();
 
             for (node, point) in self.nodes.borrow().values() {
@@ -165,14 +160,13 @@ mod imp {
 
                 let transform = self
                     .canvas_space_to_screen_space_transform()
-                    .translate(point)
-                    .unwrap();
+                    .translate(point);
 
                 node.allocate(
                     (natural_size.width() as f64 / zoom_factor).ceil() as i32,
                     (natural_size.height() as f64 / zoom_factor).ceil() as i32,
                     baseline,
-                    Some(&transform),
+                    Some(transform),
                 );
             }
 
@@ -184,7 +178,8 @@ mod imp {
             }
         }
 
-        fn snapshot(&self, widget: &Self::Type, snapshot: &gtk::Snapshot) {
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            let widget = &*self.obj();
             let alloc = widget.allocation();
 
             self.snapshot_background(widget, snapshot);
@@ -195,7 +190,7 @@ mod imp {
                 .values()
                 // Cull nodes from rendering when they are outside the visible canvas area
                 .filter(|(node, _)| alloc.intersect(&node.allocation()).is_some())
-                .for_each(|(node, _)| self.instance().snapshot_child(node, snapshot));
+                .for_each(|(node, _)| widget.snapshot_child(node, snapshot));
 
             self.snapshot_links(widget, snapshot);
         }
@@ -217,9 +212,7 @@ mod imp {
 
             gsk::Transform::new()
                 .translate(&Point::new(-hadj as f32, -vadj as f32))
-                .unwrap()
                 .scale(zoom_factor as f32, zoom_factor as f32)
-                .unwrap()
         }
 
         /// Returns a [`gsk::Transform`] matrix that can translate from screen space to canvas space.
@@ -232,7 +225,6 @@ mod imp {
         }
 
         fn setup_node_dragging(&self) {
-            let obj = self.instance();
             let drag_controller = gtk::GestureDrag::new();
 
             drag_controller.connect_drag_begin(|drag_controller, x, y| {
@@ -297,12 +289,10 @@ mod imp {
                     ),
                 );
             });
-            obj.add_controller(&drag_controller);
+            self.obj().add_controller(drag_controller);
         }
 
         fn setup_scroll_zooming(&self) {
-            let obj = self.instance();
-
             // We're only interested in the vertical axis, but for devices like touchpads,
             // not capturing a small accidental horizontal move may cause the scroll to be disrupted if a widget
             // higher up captures it instead.
@@ -327,7 +317,7 @@ mod imp {
                     gtk::Inhibit(false)
                 }
             });
-            obj.add_controller(&scroll_controller);
+            self.obj().add_controller(scroll_controller);
         }
 
         fn setup_zoom_gesture(&self) {
@@ -355,7 +345,7 @@ mod imp {
 
                 widget.set_zoom_factor(initial_zoom * delta, gesture.bounding_box_center());
             });
-            self.instance().add_controller(&zoom_gesture);
+            self.obj().add_controller(zoom_gesture);
         }
 
         fn snapshot_background(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
@@ -491,6 +481,7 @@ mod imp {
         /// # Returns
         /// `Some((from_x, from_y, to_x, to_y))` if all objects the links refers to exist as widgets.
         fn get_link_coordinates(&self, link: &crate::PipewireLink) -> Option<(f64, f64, f64, f64)> {
+            let widget = &*self.obj();
             let nodes = self.nodes.borrow();
 
             let output_port = &nodes.get(&link.node_from)?.0.get_port(link.port_from)?;
@@ -499,7 +490,7 @@ mod imp {
                 (output_port.allocated_width() - output_port.width()) as f64 / 2.0;
 
             let (from_x, from_y) = output_port.translate_coordinates(
-                &self.instance(),
+                widget,
                 output_port.width() as f64 + output_port_padding,
                 (output_port.height() / 2) as f64,
             )?;
@@ -510,7 +501,7 @@ mod imp {
                 (input_port.allocated_width() - input_port.width()) as f64 / 2.0;
 
             let (to_x, to_y) = input_port.translate_coordinates(
-                &self.instance(),
+                widget,
                 -input_port_padding,
                 (input_port.height() / 2) as f64,
             )?;
@@ -573,7 +564,7 @@ impl GraphView {
     pub const ZOOM_MAX: f64 = 4.0;
 
     pub fn new() -> Self {
-        glib::Object::new(&[]).expect("Failed to create GraphView")
+        glib::Object::new()
     }
 
     pub fn zoom_factor(&self) -> f64 {
@@ -619,7 +610,7 @@ impl GraphView {
     }
 
     pub fn add_node(&self, id: u32, node: Node, node_type: Option<NodeType>) {
-        let private = imp::GraphView::from_instance(self);
+        let imp = self.imp();
         node.set_parent(self);
 
         // Place widgets in colums of 3, growing down
@@ -632,7 +623,7 @@ impl GraphView {
             420.0
         };
 
-        let y = private
+        let y = imp
             .nodes
             .borrow()
             .values()
@@ -651,15 +642,11 @@ impl GraphView {
             })
             .map_or(20_f32, |(_x, y)| y + 100.0);
 
-        private
-            .nodes
-            .borrow_mut()
-            .insert(id, (node, Point::new(x, y)));
+        imp.nodes.borrow_mut().insert(id, (node, Point::new(x, y)));
     }
 
     pub fn remove_node(&self, id: u32) {
-        let private = imp::GraphView::from_instance(self);
-        let mut nodes = private.nodes.borrow_mut();
+        let mut nodes = self.imp().nodes.borrow_mut();
         if let Some((node, _)) = nodes.remove(&id) {
             node.unparent();
         } else {
@@ -668,9 +655,7 @@ impl GraphView {
     }
 
     pub fn add_port(&self, node_id: u32, port_id: u32, port: crate::view::port::Port) {
-        let private = imp::GraphView::from_instance(self);
-
-        if let Some((node, _)) = private.nodes.borrow_mut().get_mut(&node_id) {
+        if let Some((node, _)) = self.imp().nodes.borrow_mut().get_mut(&node_id) {
             node.add_port(port_id, port);
         } else {
             error!(
@@ -681,22 +666,22 @@ impl GraphView {
     }
 
     pub fn remove_port(&self, id: u32, node_id: u32) {
-        let private = imp::GraphView::from_instance(self);
-        let nodes = private.nodes.borrow();
+        let nodes = self.imp().nodes.borrow();
         if let Some((node, _)) = nodes.get(&node_id) {
             node.remove_port(id);
         }
     }
 
     pub fn add_link(&self, link_id: u32, link: crate::PipewireLink, active: bool) {
-        let private = imp::GraphView::from_instance(self);
-        private.links.borrow_mut().insert(link_id, (link, active));
+        self.imp()
+            .links
+            .borrow_mut()
+            .insert(link_id, (link, active));
         self.queue_draw();
     }
 
     pub fn set_link_state(&self, link_id: u32, active: bool) {
-        let private = imp::GraphView::from_instance(self);
-        if let Some((_, state)) = private.links.borrow_mut().get_mut(&link_id) {
+        if let Some((_, state)) = self.imp().links.borrow_mut().get_mut(&link_id) {
             *state = active;
             self.queue_draw();
         } else {
@@ -705,8 +690,7 @@ impl GraphView {
     }
 
     pub fn remove_link(&self, id: u32) {
-        let private = imp::GraphView::from_instance(self);
-        let mut links = private.links.borrow_mut();
+        let mut links = self.imp().links.borrow_mut();
         links.remove(&id);
 
         self.queue_draw();

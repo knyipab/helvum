@@ -67,31 +67,25 @@ mod imp {
     }
 
     impl ObjectImpl for Node {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
-            self.grid.set_parent(obj);
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.grid.set_parent(&*self.obj());
         }
 
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
                 vec![
-                    glib::ParamSpecUInt::new(
-                        "pipewire-id",
-                        "pipewire-id",
-                        "pipewire-id",
-                        u32::MIN,
-                        u32::MAX,
-                        0,
-                        ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY,
-                    ),
-                    glib::ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
+                    glib::ParamSpecUInt::builder("pipewire-id")
+                        .flags(ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY)
+                        .build(),
+                    glib::ParamSpecString::builder("name").build(),
                 ]
             });
 
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
                 "pipewire-id" => self.pipewire_id.get().to_value(),
                 "name" => self.label.text().to_value(),
@@ -99,13 +93,7 @@ mod imp {
             }
         }
 
-        fn set_property(
-            &self,
-            _obj: &Self::Type,
-            _id: usize,
-            value: &glib::Value,
-            pspec: &glib::ParamSpec,
-        ) {
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "name" => self.label.set_text(value.get().unwrap()),
                 "pipewire-id" => self.pipewire_id.set(value.get().unwrap()),
@@ -113,7 +101,7 @@ mod imp {
             }
         }
 
-        fn dispose(&self, _obj: &Self::Type) {
+        fn dispose(&self) {
             self.grid.unparent();
         }
     }
@@ -128,8 +116,10 @@ glib::wrapper! {
 
 impl Node {
     pub fn new(name: &str, pipewire_id: u32) -> Self {
-        glib::Object::new(&[("name", &name), ("pipewire-id", &pipewire_id)])
-            .expect("Failed to create Node")
+        glib::Object::builder()
+            .property("name", &name)
+            .property("pipewire-id", &pipewire_id)
+            .build()
     }
 
     pub fn pipewire_id(&self) -> u32 {
@@ -147,37 +137,32 @@ impl Node {
     }
 
     pub fn add_port(&mut self, id: u32, port: super::port::Port) {
-        let private = imp::Node::from_instance(self);
+        let imp = self.imp();
 
         match port.direction() {
             Direction::Input => {
-                private
-                    .grid
-                    .attach(&port, 0, private.num_ports_in.get() + 1, 1, 1);
-                private.num_ports_in.set(private.num_ports_in.get() + 1);
+                imp.grid.attach(&port, 0, imp.num_ports_in.get() + 1, 1, 1);
+                imp.num_ports_in.set(imp.num_ports_in.get() + 1);
             }
             Direction::Output => {
-                private
-                    .grid
-                    .attach(&port, 1, private.num_ports_out.get() + 1, 1, 1);
-                private.num_ports_out.set(private.num_ports_out.get() + 1);
+                imp.grid.attach(&port, 1, imp.num_ports_out.get() + 1, 1, 1);
+                imp.num_ports_out.set(imp.num_ports_out.get() + 1);
             }
         }
 
-        private.ports.borrow_mut().insert(id, port);
+        imp.ports.borrow_mut().insert(id, port);
     }
 
     pub fn get_port(&self, id: u32) -> Option<super::port::Port> {
-        let private = imp::Node::from_instance(self);
-        private.ports.borrow_mut().get(&id).cloned()
+        self.imp().ports.borrow_mut().get(&id).cloned()
     }
 
     pub fn remove_port(&self, id: u32) {
-        let private = imp::Node::from_instance(self);
-        if let Some(port) = private.ports.borrow_mut().remove(&id) {
+        let imp = self.imp();
+        if let Some(port) = imp.ports.borrow_mut().remove(&id) {
             match port.direction() {
-                Direction::Input => private.num_ports_in.set(private.num_ports_in.get() - 1),
-                Direction::Output => private.num_ports_in.set(private.num_ports_out.get() - 1),
+                Direction::Input => imp.num_ports_in.set(imp.num_ports_in.get() - 1),
+                Direction::Output => imp.num_ports_in.set(imp.num_ports_out.get() - 1),
             }
 
             port.unparent();

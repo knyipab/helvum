@@ -61,87 +61,78 @@ mod imp {
     }
 
     impl ObjectImpl for ZoomEntry {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
+        fn constructed(&self) {
+            self.parent_constructed();
 
             self.zoom_out_button
-                .connect_clicked(clone!(@weak obj => move |_| {
-                    let graphview = obj.imp().graphview.borrow();
+                .connect_clicked(clone!(@weak self as imp => move |_| {
+                    let graphview = imp.graphview.borrow();
                     if let Some(ref graphview) = *graphview {
                         graphview.set_zoom_factor(graphview.zoom_factor() - 0.1, None);
                     }
                 }));
 
             self.zoom_in_button
-                .connect_clicked(clone!(@weak obj => move |_| {
-                    let graphview = obj.imp().graphview.borrow();
+                .connect_clicked(clone!(@weak self as imp => move |_| {
+                    let graphview = imp.graphview.borrow();
                     if let Some(ref graphview) = *graphview {
                         graphview.set_zoom_factor(graphview.zoom_factor() + 0.1, None);
                     }
                 }));
 
             self.entry
-                .connect_activate(clone!(@weak obj => move |entry| {
+                .connect_activate(clone!(@weak self as imp => move |entry| {
                     if let Ok(zoom_factor) = entry.text().trim_matches('%').parse::<f64>() {
-                        let graphview = obj.imp().graphview.borrow();
+                        let graphview = imp.graphview.borrow();
                         if let Some(ref graphview) = *graphview {
                             graphview.set_zoom_factor(zoom_factor / 100.0, None);
                         }
                     }
                 }));
             self.entry
-                .connect_icon_press(clone!(@weak obj => move |_, pos| {
+                .connect_icon_press(clone!(@weak self as imp => move |_, pos| {
                     if pos == gtk::EntryIconPosition::Secondary {
-                        obj.imp().popover.show();
+                        imp.popover.show();
                     }
                 }));
 
             self.popover.set_parent(&self.entry.get());
         }
 
-        fn dispose(&self, obj: &Self::Type) {
+        fn dispose(&self) {
             self.popover.unparent();
 
-            while let Some(child) = obj.first_child() {
+            while let Some(child) = self.obj().first_child() {
                 child.unparent();
             }
         }
 
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
-                vec![glib::ParamSpecObject::new(
-                    "zoomed-widget",
-                    "zoomed widget",
-                    "Zoomed Widget",
-                    view::GraphView::static_type(),
-                    glib::ParamFlags::READWRITE | glib::ParamFlags::CONSTRUCT,
-                )]
+                vec![
+                    glib::ParamSpecObject::builder::<view::GraphView>("zoomed-widget")
+                        .flags(glib::ParamFlags::READWRITE | glib::ParamFlags::CONSTRUCT)
+                        .build(),
+                ]
             });
 
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
                 "zoomed-widget" => self.graphview.borrow().to_value(),
                 _ => unimplemented!(),
             }
         }
 
-        fn set_property(
-            &self,
-            obj: &Self::Type,
-            _id: usize,
-            value: &glib::Value,
-            pspec: &glib::ParamSpec,
-        ) {
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "zoomed-widget" => {
                     let widget: view::GraphView = value.get().unwrap();
                     widget.connect_notify_local(
                         Some("zoom-factor"),
-                        clone!(@weak obj => move |graphview, _| {
-                            let imp = obj.imp();
+                        clone!(@weak self as imp => move |graphview, _| {
                             imp.update_zoom_factor_text(graphview.zoom_factor());
                         }),
                     );
@@ -174,6 +165,8 @@ glib::wrapper! {
 
 impl ZoomEntry {
     pub fn new(zoomed_widget: &view::GraphView) -> Self {
-        glib::Object::new(&[("zoomed-widget", zoomed_widget)]).expect("Failed to create ZoomEntry")
+        glib::Object::builder()
+            .property("zoomed-widget", zoomed_widget)
+            .build()
     }
 }

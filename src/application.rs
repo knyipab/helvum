@@ -52,7 +52,8 @@ mod imp {
 
     impl ObjectImpl for Application {}
     impl ApplicationImpl for Application {
-        fn activate(&self, app: &Self::Type) {
+        fn activate(&self) {
+            let app = &*self.obj();
             let scrollwindow = gtk::ScrolledWindow::builder()
                 .child(&self.graphview)
                 .build();
@@ -85,12 +86,12 @@ mod imp {
             window.show();
         }
 
-        fn startup(&self, app: &Self::Type) {
-            self.parent_startup(app);
+        fn startup(&self) {
+            self.parent_startup();
 
             // Load CSS from the STYLE variable.
             let provider = gtk::CssProvider::new();
-            provider.load_from_data(STYLE.as_bytes());
+            provider.load_from_data(STYLE);
             gtk::StyleContext::add_provider_for_display(
                 &gtk::gdk::Display::default().expect("Error initializing gtk css provider."),
                 &provider,
@@ -114,10 +115,11 @@ impl Application {
         gtk_receiver: Receiver<PipewireMessage>,
         pw_sender: Sender<GtkMessage>,
     ) -> Self {
-        let app: Application = glib::Object::new(&[("application-id", &"org.pipewire.Helvum")])
-            .expect("Failed to create new Application");
+        let app: Application = glib::Object::builder()
+            .property("application-id", &"org.pipewire.Helvum")
+            .build();
 
-        let imp = imp::Application::from_instance(&app);
+        let imp = app.imp();
         imp.pw_sender
             .set(RefCell::new(pw_sender))
             // Discard the returned sender, as it does not implement `Debug`.
@@ -159,11 +161,9 @@ impl Application {
     fn add_node(&self, id: u32, name: &str, node_type: Option<NodeType>) {
         info!("Adding node to graph: id {}", id);
 
-        imp::Application::from_instance(self).graphview.add_node(
-            id,
-            view::Node::new(name, id),
-            node_type,
-        );
+        self.imp()
+            .graphview
+            .add_node(id, view::Node::new(name, id), node_type);
     }
 
     /// Add a new port to the view.
@@ -176,8 +176,6 @@ impl Application {
         media_type: Option<MediaType>,
     ) {
         info!("Adding port to graph: id {}", id);
-
-        let imp = imp::Application::from_instance(self);
 
         let port = view::Port::new(id, name, direction, media_type);
 
@@ -196,7 +194,7 @@ impl Application {
             }),
         );
 
-        imp.graphview.add_port(node_id, id, port);
+        self.imp().graphview.add_port(node_id, id, port);
     }
 
     /// Add a new link to the view.
@@ -214,7 +212,7 @@ impl Application {
         // FIXME: Links should be colored depending on the data they carry (video, audio, midi) like ports are.
 
         // Update graph to contain the new link.
-        imp::Application::from_instance(self).graphview.add_link(
+        self.imp().graphview.add_link(
             id,
             PipewireLink {
                 node_from,
@@ -233,15 +231,17 @@ impl Application {
             if active { "active" } else { "inactive" }
         );
 
-        imp::Application::from_instance(self)
-            .graphview
-            .set_link_state(id, active);
+        self.imp().graphview.set_link_state(id, active);
     }
 
     // Toggle a link between the two specified ports on the remote pipewire server.
     fn toggle_link(&self, port_from: u32, port_to: u32) {
-        let imp = imp::Application::from_instance(self);
-        let sender = imp.pw_sender.get().expect("pw_sender not set").borrow_mut();
+        let sender = self
+            .imp()
+            .pw_sender
+            .get()
+            .expect("pw_sender not set")
+            .borrow_mut();
         sender
             .send(GtkMessage::ToggleLink { port_from, port_to })
             .expect("Failed to send message");
@@ -251,8 +251,7 @@ impl Application {
     fn remove_node(&self, id: u32) {
         info!("Removing node from graph: id {}", id);
 
-        let imp = imp::Application::from_instance(self);
-        imp.graphview.remove_node(id);
+        self.imp().graphview.remove_node(id);
     }
 
     /// Remove the port with the id `id` from the node with the id `node_id`
@@ -260,15 +259,13 @@ impl Application {
     fn remove_port(&self, id: u32, node_id: u32) {
         info!("Removing port from graph: id {}, node_id: {}", id, node_id);
 
-        let imp = imp::Application::from_instance(self);
-        imp.graphview.remove_port(id, node_id);
+        self.imp().graphview.remove_port(id, node_id);
     }
 
     /// Remove the link with the specified id from the view.
     fn remove_link(&self, id: u32) {
         info!("Removing link from graph: id {}", id);
 
-        let imp = imp::Application::from_instance(self);
-        imp.graphview.remove_link(id);
+        self.imp().graphview.remove_link(id);
     }
 }
