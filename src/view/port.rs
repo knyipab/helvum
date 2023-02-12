@@ -69,7 +69,12 @@ mod imp {
     impl ObjectImpl for Port {
         fn constructed(&self) {
             self.parent_constructed();
+
             self.label.set_parent(&*self.obj());
+            self.label.set_wrap(true);
+            self.label.set_lines(2);
+            self.label.set_max_width_chars(20);
+            self.label.set_ellipsize(gtk::pango::EllipsizeMode::End);
         }
 
         fn dispose(&self) {
@@ -99,7 +104,10 @@ mod imp {
 
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
-                "name" => self.label.set_text(value.get().unwrap()),
+                "name" => {
+                    self.label.set_text(value.get().unwrap());
+                    self.label.set_tooltip_text(value.get().ok());
+                }
                 "pipewire-id" => self.pipewire_id.set(value.get().unwrap()).unwrap(),
                 _ => unimplemented!(),
             }

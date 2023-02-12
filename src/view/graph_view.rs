@@ -640,7 +640,7 @@ impl GraphView {
                 // Get max in column
                 y1.partial_cmp(y2).unwrap_or(Ordering::Equal)
             })
-            .map_or(20_f32, |(_x, y)| y + 100.0);
+            .map_or(20_f32, |(_x, y)| y + 120.0);
 
         imp.nodes.borrow_mut().insert(id, (node, Point::new(x, y)));
     }

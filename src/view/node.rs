@@ -48,7 +48,12 @@ mod imp {
 
         fn new() -> Self {
             let grid = gtk::Grid::new();
+
             let label = gtk::Label::new(None);
+            label.set_wrap(true);
+            label.set_lines(2);
+            label.set_max_width_chars(20);
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
             grid.attach(&label, 0, 0, 2, 1);
 
@@ -95,7 +100,10 @@ mod imp {
 
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
-                "name" => self.label.set_text(value.get().unwrap()),
+                "name" => {
+                    self.label.set_text(value.get().unwrap());
+                    self.label.set_tooltip_text(value.get().ok());
+                }
                 "pipewire-id" => self.pipewire_id.set(value.get().unwrap()),
                 _ => unimplemented!(),
             }
