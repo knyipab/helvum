@@ -158,9 +158,11 @@ impl Port {
                 Direction::Output => ForwardLink(id).to_value(),
             }))
             .build();
-        drag_src.connect_drag_begin(move |_, _| {
+        drag_src.connect_drag_begin(clone!(@weak res as obj => move |source, _| {
             trace!("Drag started from port {}", id);
-        });
+            let paintable = gtk::WidgetPaintable::new(Some(&obj));
+            source.set_icon(Some(&paintable), 0, 0);
+        }));
         drag_src.connect_drag_cancel(move |_, _, _| {
             trace!("Drag from port {} was cancelled", id);
             false
