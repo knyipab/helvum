@@ -27,12 +27,12 @@ mod imp {
         collections::HashSet,
     };
 
-    #[derive(glib::Properties)]
+    #[derive(glib::Properties, gtk::CompositeTemplate, Default)]
     #[properties(wrapper_type = super::Node)]
+    #[template(file = "node.ui")]
     pub struct Node {
         #[property(get, set, construct_only)]
         pub(super) pipewire_id: Cell<u32>,
-        pub(super) grid: gtk::Grid,
         #[property(
             name = "name", type = String,
             get = |this: &Self| this.label.text().to_string(),
@@ -41,7 +41,10 @@ mod imp {
                 this.label.set_tooltip_text(Some(val));
             }
         )]
-        pub(super) label: gtk::Label,
+        #[template_child]
+        pub(super) label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) port_grid: TemplateChild<gtk::Grid>,
         pub(super) ports: RefCell<HashSet<Port>>,
         pub(super) num_ports_in: Cell<i32>,
         pub(super) num_ports_out: Cell<i32>,
@@ -54,31 +57,13 @@ mod imp {
         type ParentType = gtk::Widget;
 
         fn class_init(klass: &mut Self::Class) {
-            klass.set_layout_manager_type::<gtk::BinLayout>();
+            klass.set_layout_manager_type::<gtk::BoxLayout>();
+
+            klass.bind_template();
         }
 
-        fn new() -> Self {
-            let grid = gtk::Grid::new();
-
-            let label = gtk::Label::new(None);
-            label.set_wrap(true);
-            label.set_lines(2);
-            label.set_max_width_chars(20);
-            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-
-            grid.attach(&label, 0, 0, 2, 1);
-
-            // Display a grab cursor when the mouse is over the label so the user knows the node can be dragged.
-            label.set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
-
-            Self {
-                pipewire_id: Cell::new(0),
-                grid,
-                label,
-                ports: RefCell::new(HashSet::new()),
-                num_ports_in: Cell::new(0),
-                num_ports_out: Cell::new(0),
-            }
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+            obj.init_template();
         }
     }
 
@@ -86,11 +71,16 @@ mod imp {
     impl ObjectImpl for Node {
         fn constructed(&self) {
             self.parent_constructed();
-            self.grid.set_parent(&*self.obj());
+
+            // Display a grab cursor when the mouse is over the label so the user knows the node can be dragged.
+            self.label
+                .set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
         }
 
         fn dispose(&self) {
-            self.grid.unparent();
+            if let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
         }
     }
 
@@ -113,13 +103,15 @@ impl Node {
     pub fn add_port(&self, port: Port) {
         let imp = self.imp();
 
-        match port.direction() {
+        match Direction::from_raw(port.direction()) {
             Direction::Input => {
-                imp.grid.attach(&port, 0, imp.num_ports_in.get() + 1, 1, 1);
+                imp.port_grid
+                    .attach(&port, 0, imp.num_ports_in.get() + 1, 1, 1);
                 imp.num_ports_in.set(imp.num_ports_in.get() + 1);
             }
             Direction::Output => {
-                imp.grid.attach(&port, 1, imp.num_ports_out.get() + 1, 1, 1);
+                imp.port_grid
+                    .attach(&port, 1, imp.num_ports_out.get() + 1, 1, 1);
                 imp.num_ports_out.set(imp.num_ports_out.get() + 1);
             }
             _ => unreachable!(),
@@ -131,7 +123,7 @@ impl Node {
     pub fn remove_port(&self, port: &Port) {
         let imp = self.imp();
         if imp.ports.borrow_mut().remove(port) {
-            match port.direction() {
+            match Direction::from_raw(port.direction()) {
                 Direction::Input => imp.num_ports_in.set(imp.num_ports_in.get() - 1),
                 Direction::Output => imp.num_ports_in.set(imp.num_ports_out.get() - 1),
                 _ => unreachable!(),

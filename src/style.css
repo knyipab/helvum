@@ -38,3 +38,13 @@
 graphview {
     background-color: @view_bg_color;
 }
+
+port {
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+port-handle {
+    border-radius: 50%;
+    background-color: @media-type-unknown;
+}

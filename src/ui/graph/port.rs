@@ -23,6 +23,8 @@ use adw::{
 };
 use pipewire::spa::Direction;
 
+use super::PortHandle;
+
 mod imp {
     use super::*;
 
@@ -32,8 +34,9 @@ mod imp {
     use pipewire::spa::{format::MediaType, Direction};
 
     /// Graphical representation of a pipewire port.
-    #[derive(glib::Properties)]
+    #[derive(gtk::CompositeTemplate, glib::Properties)]
     #[properties(wrapper_type = super::Port)]
+    #[template(file = "port.ui")]
     pub struct Port {
         #[property(get, set, construct_only)]
         pub(super) pipewire_id: OnceCell<u32>,
@@ -44,6 +47,13 @@ mod imp {
         )]
         pub(super) media_type: Cell<MediaType>,
         #[property(
+            type = u32,
+            get = |_| self.direction.get().as_raw(),
+            set = Self::set_direction,
+            construct_only
+        )]
+        pub(super) direction: Cell<Direction>,
+        #[property(
             name = "name", type = String,
             get = |this: &Self| this.label.text().to_string(),
             set = |this: &Self, val| {
@@ -51,8 +61,10 @@ mod imp {
                 this.label.set_tooltip_text(Some(val));
             }
         )]
-        pub(super) label: gtk::Label,
-        pub(super) direction: OnceCell<Direction>,
+        #[template_child]
+        pub(super) label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) handle: TemplateChild<PortHandle>,
     }
 
     impl Default for Port {
@@ -60,8 +72,9 @@ mod imp {
             Self {
                 pipewire_id: OnceCell::default(),
                 media_type: Cell::new(MediaType::Unknown),
-                label: gtk::Label::default(),
-                direction: OnceCell::default(),
+                direction: Cell::new(Direction::Output),
+                label: TemplateChild::default(),
+                handle: TemplateChild::default(),
             }
         }
     }
@@ -73,10 +86,13 @@ mod imp {
         type ParentType = gtk::Widget;
 
         fn class_init(klass: &mut Self::Class) {
-            klass.set_layout_manager_type::<gtk::BinLayout>();
+            klass.set_css_name("port");
 
-            // Make it look like a GTK button.
-            klass.set_css_name("button");
+            klass.bind_template();
+        }
+
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+            obj.init_template();
         }
     }
 
@@ -85,17 +101,11 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            self.label.set_parent(&*self.obj());
-            self.label.set_wrap(true);
-            self.label.set_lines(2);
-            self.label.set_max_width_chars(20);
-            self.label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            // Display a grab cursor when the mouse is over the port so the user knows it can be dragged to another port.
+            self.obj()
+                .set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
 
             self.setup_port_drag_and_drop();
-        }
-
-        fn dispose(&self) {
-            self.label.unparent()
         }
 
         fn signals() -> &'static [Signal] {
@@ -109,7 +119,81 @@ mod imp {
             SIGNALS.as_ref()
         }
     }
-    impl WidgetImpl for Port {}
+
+    impl WidgetImpl for Port {
+        fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+            match orientation {
+                gtk::Orientation::Horizontal => {
+                    let (min_handle_width, nat_handle_width, _, _) =
+                        self.handle.measure(orientation, for_size);
+                    let (min_label_width, nat_label_width, _, _) = self
+                        .label
+                        .measure(orientation, i32::max(for_size - (nat_handle_width / 2), -1));
+
+                    (
+                        (min_handle_width / 2) + min_label_width,
+                        (nat_handle_width / 2) + nat_label_width,
+                        -1,
+                        -1,
+                    )
+                }
+                gtk::Orientation::Vertical => {
+                    let (min_label_height, nat_label_height, _, _) =
+                        self.label.measure(orientation, for_size);
+                    let (min_handle_height, nat_handle_height, _, _) =
+                        self.handle.measure(orientation, for_size);
+
+                    (
+                        i32::max(min_label_height, min_handle_height),
+                        i32::max(nat_label_height, nat_handle_height),
+                        -1,
+                        -1,
+                    )
+                }
+                _ => unimplemented!(),
+            }
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, _baseline: i32) {
+            let (_, nat_handle_height, _, _) =
+                self.handle.measure(gtk::Orientation::Vertical, height);
+            let (_, nat_handle_width, _, _) =
+                self.handle.measure(gtk::Orientation::Horizontal, width);
+
+            match Direction::from_raw(self.obj().direction()) {
+                Direction::Input => {
+                    let alloc = gtk::Allocation::new(
+                        -nat_handle_width / 2,
+                        (height - nat_handle_height) / 2,
+                        nat_handle_width,
+                        nat_handle_height,
+                    );
+                    self.handle.size_allocate(&alloc, -1);
+
+                    let alloc = gtk::Allocation::new(
+                        nat_handle_width / 2,
+                        0,
+                        width - (nat_handle_width / 2),
+                        height,
+                    );
+                    self.label.size_allocate(&alloc, -1);
+                }
+                Direction::Output => {
+                    let alloc = gtk::Allocation::new(
+                        width - (nat_handle_width / 2),
+                        (height - nat_handle_height) / 2,
+                        nat_handle_width,
+                        nat_handle_height,
+                    );
+                    self.handle.size_allocate(&alloc, -1);
+
+                    let alloc = gtk::Allocation::new(0, 0, width - (nat_handle_width / 2), height);
+                    self.label.size_allocate(&alloc, -1);
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
 
     impl Port {
         fn setup_port_drag_and_drop(&self) {
@@ -185,7 +269,7 @@ mod imp {
                     return false;
                 }
 
-                let (output_port, input_port) = match port.direction() {
+                let (output_port, input_port) = match Direction::from_raw(port.direction()) {
                     Direction::Output => (&port, &other_port),
                     Direction::Input => (&other_port, &port),
                     _ => unreachable!(),
@@ -200,24 +284,40 @@ mod imp {
             });
             obj.add_controller(drop_target);
         }
-    }
 
-    impl Port {
         fn set_media_type(&self, media_type: u32) {
             let media_type = MediaType::from_raw(media_type);
 
             self.media_type.set(media_type);
 
             for css_class in ["video", "audio", "midi"] {
-                self.obj().remove_css_class(css_class)
+                self.handle.remove_css_class(css_class)
             }
 
             // Color the port according to its media type.
             match media_type {
-                MediaType::Video => self.obj().add_css_class("video"),
-                MediaType::Audio => self.obj().add_css_class("audio"),
-                MediaType::Application | MediaType::Stream => self.obj().add_css_class("midi"),
+                MediaType::Video => self.handle.add_css_class("video"),
+                MediaType::Audio => self.handle.add_css_class("audio"),
+                MediaType::Application | MediaType::Stream => self.handle.add_css_class("midi"),
                 _ => {}
+            }
+        }
+
+        fn set_direction(&self, direction: u32) {
+            let direction = Direction::from_raw(direction);
+
+            self.direction.set(direction);
+
+            match direction {
+                Direction::Input => {
+                    self.obj().set_halign(gtk::Align::Start);
+                    self.label.set_halign(gtk::Align::Start);
+                }
+                Direction::Output => {
+                    self.obj().set_halign(gtk::Align::End);
+                    self.label.set_halign(gtk::Align::End);
+                }
+                _ => unreachable!(),
             }
         }
     }
@@ -230,30 +330,11 @@ glib::wrapper! {
 
 impl Port {
     pub fn new(id: u32, name: &str, direction: Direction) -> Self {
-        // Create the widget and initialize needed fields
-        let res: Self = glib::Object::builder()
+        glib::Object::builder()
             .property("pipewire-id", id)
+            .property("direction", direction.as_raw())
             .property("name", name)
-            .build();
-
-        let imp = res.imp();
-
-        imp.direction
-            .set(direction)
-            .expect("Port direction already set");
-
-        // Display a grab cursor when the mouse is over the port so the user knows it can be dragged to another port.
-        res.set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
-
-        res
-    }
-
-    pub fn direction(&self) -> Direction {
-        *self
-            .imp()
-            .direction
-            .get()
-            .expect("Port direction is not set")
+            .build()
     }
 
     pub fn link_anchor(&self) -> graphene::Point {
@@ -263,8 +344,9 @@ impl Port {
         let padding_left: f32 = style_context.padding().left().into();
         let border_left: f32 = style_context.border().left().into();
 
+        let direction = Direction::from_raw(self.direction());
         graphene::Point::new(
-            match self.direction() {
+            match direction {
                 Direction::Output => self.width() as f32 + padding_right + border_right,
                 Direction::Input => 0.0 - padding_left - border_left,
                 _ => unreachable!(),

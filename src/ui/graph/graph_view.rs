@@ -223,8 +223,6 @@ mod imp {
             let widget = &*self.obj();
             let alloc = widget.allocation();
 
-            // self.snapshot_background(widget, snapshot);
-
             // Draw all visible children
             self.nodes
                 .borrow()
@@ -538,7 +536,7 @@ mod imp {
             });
             let other_anchor = picked_port_anchor.unwrap_or(drag_cursor);
 
-            let (output_anchor, input_anchor) = match port.direction() {
+            let (output_anchor, input_anchor) = match Direction::from_raw(port.direction()) {
                 Direction::Output => (&port_anchor, &other_anchor),
                 Direction::Input => (&other_anchor, &port_anchor),
                 _ => unreachable!(),

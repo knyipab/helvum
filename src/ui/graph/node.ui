@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <template class="HelvumNode" parent="GtkWidget">
+    <style>
+      <class name="card"></class>
+    </style>>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkLabel" id="label">
+            <style>
+              <class name="heading"></class>
+            </style>
+            <property name="wrap">true</property>
+            <property name="ellipsize">PANGO_ELLIPSIZE_END</property>
+            <property name="lines">2</property>
+            <property name="max-width-chars">20</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkSeparator"></object>
+        </child>
+        <child>
+          <object class="GtkGrid" id="port_grid">
+            <property name="column-spacing">10</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>
+
