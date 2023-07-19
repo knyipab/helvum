@@ -1,6 +1,6 @@
 use gtk::{glib, prelude::*, subclass::prelude::*};
 
-use crate::view;
+use super::GraphView;
 
 mod imp {
     use std::cell::RefCell;
@@ -13,7 +13,7 @@ mod imp {
     #[derive(gtk::CompositeTemplate)]
     #[template(file = "zoomentry.ui")]
     pub struct ZoomEntry {
-        pub graphview: RefCell<Option<view::GraphView>>,
+        pub graphview: RefCell<Option<GraphView>>,
         #[template_child]
         pub zoom_out_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -110,7 +110,7 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
                 vec![
-                    glib::ParamSpecObject::builder::<view::GraphView>("zoomed-widget")
+                    glib::ParamSpecObject::builder::<GraphView>("zoomed-widget")
                         .flags(glib::ParamFlags::READWRITE | glib::ParamFlags::CONSTRUCT)
                         .build(),
                 ]
@@ -129,7 +129,7 @@ mod imp {
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "zoomed-widget" => {
-                    let widget: view::GraphView = value.get().unwrap();
+                    let widget: GraphView = value.get().unwrap();
                     widget.connect_notify_local(
                         Some("zoom-factor"),
                         clone!(@weak self as imp => move |graphview, _| {
@@ -149,7 +149,7 @@ mod imp {
     impl ZoomEntry {
         /// Update the text contained in the combobox's entry to reflect the provided zoom factor.
         ///
-        /// This does not update the associated [`view::GraphView`]s zoom level.
+        /// This does not update the associated [`GraphView`]s zoom level.
         fn update_zoom_factor_text(&self, zoom_factor: f64) {
             self.entry
                 .buffer()
@@ -164,7 +164,7 @@ glib::wrapper! {
 }
 
 impl ZoomEntry {
-    pub fn new(zoomed_widget: &view::GraphView) -> Self {
+    pub fn new(zoomed_widget: &GraphView) -> Self {
         glib::Object::builder()
             .property("zoomed-widget", zoomed_widget)
             .build()

@@ -652,7 +652,7 @@ impl GraphView {
         }
     }
 
-    pub fn add_port(&self, node_id: u32, port_id: u32, port: crate::view::port::Port) {
+    pub fn add_port(&self, node_id: u32, port_id: u32, port: Port) {
         if let Some((node, _)) = self.imp().nodes.borrow_mut().get_mut(&node_id) {
             node.add_port(port_id, port);
         } else {

@@ -19,6 +19,8 @@ use pipewire::spa::Direction;
 
 use std::collections::HashMap;
 
+use super::Port;
+
 mod imp {
     use glib::ParamFlags;
     use once_cell::sync::Lazy;
@@ -31,7 +33,7 @@ mod imp {
         pub(super) pipewire_id: Cell<u32>,
         pub(super) grid: gtk::Grid,
         pub(super) label: gtk::Label,
-        pub(super) ports: RefCell<HashMap<u32, crate::view::port::Port>>,
+        pub(super) ports: RefCell<HashMap<u32, Port>>,
         pub(super) num_ports_in: Cell<i32>,
         pub(super) num_ports_out: Cell<i32>,
     }
@@ -144,7 +146,7 @@ impl Node {
         self.set_property("name", name);
     }
 
-    pub fn add_port(&mut self, id: u32, port: super::port::Port) {
+    pub fn add_port(&mut self, id: u32, port: Port) {
         let imp = self.imp();
 
         match port.direction() {
@@ -161,7 +163,7 @@ impl Node {
         imp.ports.borrow_mut().insert(id, port);
     }
 
-    pub fn get_port(&self, id: u32) -> Option<super::port::Port> {
+    pub fn get_port(&self, id: u32) -> Option<Port> {
         self.imp().ports.borrow_mut().get(&id).cloned()
     }
 

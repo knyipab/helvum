@@ -16,7 +16,7 @@
 
 mod application;
 mod pipewire_connection;
-mod view;
+mod ui;
 
 use glib::PRIORITY_DEFAULT;
 use gtk::prelude::*;

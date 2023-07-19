@@ -26,7 +26,7 @@ use log::info;
 use pipewire::{channel::Sender, spa::Direction};
 
 use crate::{
-    view::{self},
+    ui,
     GtkMessage, MediaType, NodeType, PipewireLink, PipewireMessage,
 };
 
@@ -39,7 +39,7 @@ mod imp {
 
     #[derive(Default)]
     pub struct Application {
-        pub(super) graphview: view::GraphView,
+        pub(super) graphview: ui::graph::GraphView,
         pub(super) pw_sender: OnceCell<RefCell<Sender<GtkMessage>>>,
     }
 
@@ -58,7 +58,7 @@ mod imp {
                 .child(&self.graphview)
                 .build();
             let headerbar = gtk::HeaderBar::new();
-            let zoomentry = view::ZoomEntry::new(&self.graphview);
+            let zoomentry = ui::graph::ZoomEntry::new(&self.graphview);
             headerbar.pack_end(&zoomentry);
 
             let window = gtk::ApplicationWindow::builder()
@@ -163,7 +163,7 @@ impl Application {
 
         self.imp()
             .graphview
-            .add_node(id, view::Node::new(name, id), node_type);
+            .add_node(id, ui::graph::Node::new(name, id), node_type);
     }
 
     /// Add a new port to the view.
@@ -177,7 +177,7 @@ impl Application {
     ) {
         info!("Adding port to graph: id {}", id);
 
-        let port = view::Port::new(id, name, direction, media_type);
+        let port = ui::graph::Port::new(id, name, direction, media_type);
 
         // Create or delete a link if the widget emits the "port-toggled" signal.
         port.connect_local(
