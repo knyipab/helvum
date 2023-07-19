@@ -20,5 +20,7 @@ mod node;
 pub use node::*;
 mod port;
 pub use port::*;
+mod link;
+pub use link::*;
 mod zoomentry;
 pub use zoomentry::*;

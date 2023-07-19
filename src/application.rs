@@ -25,10 +25,7 @@ use gtk::{
 use log::info;
 use pipewire::{channel::Sender, spa::Direction};
 
-use crate::{
-    ui,
-    GtkMessage, MediaType, NodeType, PipewireLink, PipewireMessage,
-};
+use crate::{ui, GtkMessage, MediaType, NodeType, PipewireLink, PipewireMessage};
 
 static STYLE: &str = include_str!("style.css");
 

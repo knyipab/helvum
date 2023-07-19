@@ -109,11 +109,9 @@ mod imp {
 
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<GraphView>("zoomed-widget")
-                        .flags(glib::ParamFlags::READWRITE | glib::ParamFlags::CONSTRUCT)
-                        .build(),
-                ]
+                vec![glib::ParamSpecObject::builder::<GraphView>("zoomed-widget")
+                    .flags(glib::ParamFlags::READWRITE | glib::ParamFlags::CONSTRUCT)
+                    .build()]
             });
 
             PROPERTIES.as_ref()

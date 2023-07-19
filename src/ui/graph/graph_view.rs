@@ -14,8 +14,6 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use super::{Node, Port};
-
 use gtk::{
     glib::{self, clone},
     graphene,
@@ -28,6 +26,7 @@ use log::{error, warn};
 
 use std::{cmp::Ordering, collections::HashMap};
 
+use super::{Link, Node, Port};
 use crate::NodeType;
 
 const CANVAS_SIZE: f64 = 5000.0;
@@ -59,7 +58,7 @@ mod imp {
         /// Stores nodes and their positions.
         pub(super) nodes: RefCell<HashMap<u32, (Node, Point)>>,
         /// Stores the link and whether it is currently active.
-        pub(super) links: RefCell<HashMap<u32, (crate::PipewireLink, bool)>>,
+        pub(super) links: RefCell<HashMap<u32, Link>>,
         pub hadjustment: RefCell<Option<gtk::Adjustment>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
         pub zoom_factor: Cell<f64>,
@@ -431,13 +430,13 @@ mod imp {
                 rgba.alpha().into(),
             );
 
-            for (link, active) in self.links.borrow().values() {
+            for link in self.links.borrow().values() {
                 // TODO: Do not draw links when they are outside the view
                 if let Some((from_x, from_y, to_x, to_y)) = self.get_link_coordinates(link) {
                     link_cr.move_to(from_x, from_y);
 
                     // Use dashed line for inactive links, full line otherwise.
-                    if *active {
+                    if link.active() {
                         link_cr.set_dash(&[], 0.0);
                     } else {
                         link_cr.set_dash(&[10.0, 5.0], 0.0);
@@ -478,11 +477,10 @@ mod imp {
         ///
         /// # Returns
         /// `Some((from_x, from_y, to_x, to_y))` if all objects the links refers to exist as widgets.
-        fn get_link_coordinates(&self, link: &crate::PipewireLink) -> Option<(f64, f64, f64, f64)> {
+        fn get_link_coordinates(&self, link: &Link) -> Option<(f64, f64, f64, f64)> {
             let widget = &*self.obj();
-            let nodes = self.nodes.borrow();
 
-            let output_port = &nodes.get(&link.node_from)?.0.get_port(link.port_from)?;
+            let output_port = link.output_port()?;
 
             let output_port_padding =
                 (output_port.allocated_width() - output_port.width()) as f64 / 2.0;
@@ -493,7 +491,7 @@ mod imp {
                 (output_port.height() / 2) as f64,
             )?;
 
-            let input_port = &nodes.get(&link.node_to)?.0.get_port(link.port_to)?;
+            let input_port = link.input_port()?;
 
             let input_port_padding =
                 (input_port.allocated_width() - input_port.width()) as f64 / 2.0;
@@ -671,16 +669,28 @@ impl GraphView {
     }
 
     pub fn add_link(&self, link_id: u32, link: crate::PipewireLink, active: bool) {
-        self.imp()
-            .links
-            .borrow_mut()
-            .insert(link_id, (link, active));
+        let nodes = self.imp().nodes.borrow();
+
+        let output_port = nodes
+            .get(&link.node_from)
+            .and_then(|(node, _)| node.get_port(link.port_from));
+
+        let input_port = nodes
+            .get(&link.node_to)
+            .and_then(|(node, _)| node.get_port(link.port_to));
+
+        let link = Link::new();
+        link.set_input_port(input_port.as_ref());
+        link.set_output_port(output_port.as_ref());
+        link.set_active(active);
+
+        self.imp().links.borrow_mut().insert(link_id, link);
         self.queue_draw();
     }
 
     pub fn set_link_state(&self, link_id: u32, active: bool) {
-        if let Some((_, state)) = self.imp().links.borrow_mut().get_mut(&link_id) {
-            *state = active;
+        if let Some(link) = self.imp().links.borrow_mut().get_mut(&link_id) {
+            link.set_active(active);
             self.queue_draw();
         } else {
             warn!("Link state changed on unknown link (id={})", link_id);
