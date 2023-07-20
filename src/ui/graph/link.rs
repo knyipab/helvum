@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use gtk::{glib, prelude::*, subclass::prelude::*};
+use adw::{glib, prelude::*, subclass::prelude::*};
 use pipewire::spa::format::MediaType;
 
 use super::Port;

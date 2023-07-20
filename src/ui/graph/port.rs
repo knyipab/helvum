@@ -14,10 +14,10 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use gtk::{
+use adw::{
     gdk,
     glib::{self, subclass::Signal},
-    graphene,
+    gtk::{self, graphene},
     prelude::*,
     subclass::prelude::*,
 };

@@ -19,3 +19,6 @@
 //! This module contains gtk widgets needed to present the graphical user interface.
 
 pub mod graph;
+
+mod window;
+pub use window::*;

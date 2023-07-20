@@ -14,11 +14,14 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use gtk::{
-    cairo, gio,
+use adw::{
+    gio,
     glib::{self, clone},
-    graphene::{self, Point},
-    gsk,
+    gtk::{
+        self, cairo,
+        graphene::{self, Point},
+        gsk,
+    },
     prelude::*,
     subclass::prelude::*,
 };
@@ -36,11 +39,7 @@ mod imp {
     use std::cell::{Cell, RefCell};
     use std::collections::{HashMap, HashSet};
 
-    use gtk::{
-        gdk::{self, RGBA},
-        graphene::Rect,
-        gsk::ColorStop,
-    };
+    use adw::gtk::gdk::{self};
     use log::warn;
     use once_cell::sync::Lazy;
     use pipewire::spa::format::MediaType;
@@ -115,7 +114,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for GraphView {
-        const NAME: &'static str = "GraphView";
+        const NAME: &'static str = "HelvumGraphView";
         type Type = super::GraphView;
         type ParentType = gtk::Widget;
         type Interfaces = (gtk::Scrollable,);
@@ -224,7 +223,7 @@ mod imp {
             let widget = &*self.obj();
             let alloc = widget.allocation();
 
-            self.snapshot_background(widget, snapshot);
+            // self.snapshot_background(widget, snapshot);
 
             // Draw all visible children
             self.nodes
@@ -460,67 +459,6 @@ mod imp {
                 widget.set_zoom_factor(initial_zoom * delta, gesture.bounding_box_center());
             });
             self.obj().add_controller(zoom_gesture);
-        }
-
-        fn snapshot_background(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
-            // Grid size and line width during neutral zoom (factor 1.0).
-            const NORMAL_GRID_SIZE: f32 = 20.0;
-            const NORMAL_GRID_LINE_WIDTH: f32 = 1.0;
-
-            let zoom_factor = self.zoom_factor.get();
-            let grid_size = NORMAL_GRID_SIZE * zoom_factor as f32;
-            let grid_line_width = NORMAL_GRID_LINE_WIDTH * zoom_factor as f32;
-
-            let alloc = widget.allocation();
-
-            // We need to offset the lines between 0 and (excluding) `grid_size` so the grid moves with
-            // the rest of the view when scrolling.
-            // The offset is rounded so the grid is always aligned to a row of pixels.
-            let hadj = self
-                .hadjustment
-                .borrow()
-                .as_ref()
-                .map(|hadjustment| hadjustment.value())
-                .unwrap_or(0.0);
-            let hoffset = (grid_size - (hadj as f32 % grid_size)) % grid_size;
-            let vadj = self
-                .vadjustment
-                .borrow()
-                .as_ref()
-                .map(|vadjustment| vadjustment.value())
-                .unwrap_or(0.0);
-            let voffset = (grid_size - (vadj as f32 % grid_size)) % grid_size;
-
-            snapshot.push_repeat(
-                &Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32),
-                Some(&Rect::new(0.0, voffset, alloc.width() as f32, grid_size)),
-            );
-            let grid_color = RGBA::new(0.137, 0.137, 0.137, 1.0);
-            snapshot.append_linear_gradient(
-                &Rect::new(0.0, voffset, alloc.width() as f32, grid_line_width),
-                &Point::new(0.0, 0.0),
-                &Point::new(alloc.width() as f32, 0.0),
-                &[
-                    ColorStop::new(0.0, grid_color),
-                    ColorStop::new(1.0, grid_color),
-                ],
-            );
-            snapshot.pop();
-
-            snapshot.push_repeat(
-                &Rect::new(0.0, 0.0, alloc.width() as f32, alloc.height() as f32),
-                Some(&Rect::new(hoffset, 0.0, grid_size, alloc.height() as f32)),
-            );
-            snapshot.append_linear_gradient(
-                &Rect::new(hoffset, 0.0, grid_line_width, alloc.height() as f32),
-                &Point::new(0.0, 0.0),
-                &Point::new(0.0, alloc.height() as f32),
-                &[
-                    ColorStop::new(0.0, grid_color),
-                    ColorStop::new(1.0, grid_color),
-                ],
-            );
-            snapshot.pop();
         }
 
         fn draw_link(

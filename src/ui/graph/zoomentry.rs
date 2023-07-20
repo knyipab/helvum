@@ -1,4 +1,4 @@
-use gtk::{glib, prelude::*, subclass::prelude::*};
+use adw::{glib, gtk, prelude::*, subclass::prelude::*};
 
 use super::GraphView;
 
@@ -127,15 +127,17 @@ mod imp {
         fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
             match pspec.name() {
                 "zoomed-widget" => {
-                    let widget: GraphView = value.get().unwrap();
-                    widget.connect_notify_local(
-                        Some("zoom-factor"),
-                        clone!(@weak self as imp => move |graphview, _| {
-                            imp.update_zoom_factor_text(graphview.zoom_factor());
-                        }),
-                    );
-                    self.update_zoom_factor_text(widget.zoom_factor());
-                    *self.graphview.borrow_mut() = Some(widget);
+                    let widget: Option<GraphView> = value.get().unwrap();
+                    if let Some(ref widget) = widget {
+                        widget.connect_notify_local(
+                            Some("zoom-factor"),
+                            clone!(@weak self as imp => move |graphview, _| {
+                                imp.update_zoom_factor_text(graphview.zoom_factor());
+                            }),
+                        );
+                        self.update_zoom_factor_text(widget.zoom_factor());
+                    }
+                    *self.graphview.borrow_mut() = widget;
                 }
                 _ => unimplemented!(),
             }

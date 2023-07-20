@@ -14,9 +14,10 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use gtk::{
+use adw::{
     gio,
     glib::{self, clone, Receiver},
+    gtk,
     prelude::*,
     subclass::prelude::*,
 };
@@ -29,11 +30,12 @@ static STYLE: &str = include_str!("style.css");
 mod imp {
     use super::*;
 
+    use adw::subclass::prelude::AdwApplicationImpl;
     use once_cell::unsync::OnceCell;
 
     #[derive(Default)]
     pub struct Application {
-        pub(super) graphview: ui::graph::GraphView,
+        pub(super) window: ui::Window,
         pub(super) graph_manager: OnceCell<GraphManager>,
     }
 
@@ -41,7 +43,7 @@ mod imp {
     impl ObjectSubclass for Application {
         const NAME: &'static str = "HelvumApplication";
         type Type = super::Application;
-        type ParentType = gtk::Application;
+        type ParentType = adw::Application;
     }
 
     impl ObjectImpl for Application {}
@@ -49,36 +51,19 @@ mod imp {
         fn activate(&self) {
             let app = &*self.obj();
 
-            let scrollwindow = gtk::ScrolledWindow::builder()
-                .child(&self.graphview)
-                .build();
-            let headerbar = gtk::HeaderBar::new();
-            let zoomentry = ui::graph::ZoomEntry::new(&self.graphview);
-            headerbar.pack_end(&zoomentry);
+            let graphview = self.window.graph();
 
-            let window = gtk::ApplicationWindow::builder()
-                .application(app)
-                .default_width(1280)
-                .default_height(720)
-                .title("Helvum - Pipewire Patchbay")
-                .child(&scrollwindow)
-                .build();
-            window
-                .settings()
-                .set_gtk_application_prefer_dark_theme(true);
-            window.set_titlebar(Some(&headerbar));
+            self.window.set_application(Some(app));
 
             let zoom_set_action =
                 gio::SimpleAction::new("set-zoom", Some(&f64::static_variant_type()));
-            zoom_set_action.connect_activate(
-                clone!(@weak self.graphview as graphview => move|_, param| {
-                    let zoom_factor = param.unwrap().get::<f64>().unwrap();
-                    graphview.set_zoom_factor(zoom_factor, None)
-                }),
-            );
-            window.add_action(&zoom_set_action);
+            zoom_set_action.connect_activate(clone!(@weak graphview => move|_, param| {
+                let zoom_factor = param.unwrap().get::<f64>().unwrap();
+                graphview.set_zoom_factor(zoom_factor, None)
+            }));
+            self.window.add_action(&zoom_set_action);
 
-            window.show();
+            self.window.show();
         }
 
         fn startup(&self) {
@@ -95,11 +80,12 @@ mod imp {
         }
     }
     impl GtkApplicationImpl for Application {}
+    impl AdwApplicationImpl for Application {}
 }
 
 glib::wrapper! {
     pub struct Application(ObjectSubclass<imp::Application>)
-        @extends gio::Application, gtk::Application,
+        @extends gio::Application, gtk::Application, adw::Application,
         @implements gio::ActionGroup, gio::ActionMap;
 }
 
@@ -117,7 +103,11 @@ impl Application {
         let imp = app.imp();
 
         imp.graph_manager
-            .set(GraphManager::new(&imp.graphview, pw_sender, gtk_receiver))
+            .set(GraphManager::new(
+                &imp.window.graph(),
+                pw_sender,
+                gtk_receiver,
+            ))
             .expect("Should be able to set graph manager");
 
         // Add <Control-Q> shortcut for quitting the application.

@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use gtk::{glib, prelude::*, subclass::prelude::*};
+use adw::{glib, prelude::*, subclass::prelude::*};
 
 use pipewire::channel::Sender as PwSender;
 

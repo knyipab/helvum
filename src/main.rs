@@ -19,7 +19,7 @@ mod graph_manager;
 mod pipewire_connection;
 mod ui;
 
-use gtk::prelude::*;
+use adw::{gtk, prelude::*};
 use pipewire::spa::{format::MediaType, Direction};
 
 /// Messages sent by the GTK thread to notify the pipewire thread.

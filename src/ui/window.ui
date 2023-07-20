@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="Adw" version="1.0"/>
+  <template class="HelvumWindow" parent="AdwApplicationWindow">
+    <property name="default-width">1280</property>
+    <property name="default-height">720</property>
+    <property name="title">Helvum - Pipewire Patchbay</property>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="AdwHeaderBar" id="header_bar">
+            <child type="end">
+              <object class="HelvumZoomEntry">
+                <property name="zoomed-widget">graph</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <child>
+              <object class="HelvumGraphView" id="graph">
+                <property name="hexpand">true</property>
+                <property name="vexpand">true</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

@@ -18,7 +18,7 @@ mod state;
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use gtk::glib::{self, clone};
+use adw::glib::{self, clone};
 use log::{debug, info, warn};
 use pipewire::{
     link::{Link, LinkChangeMask, LinkInfo, LinkListener, LinkState},
