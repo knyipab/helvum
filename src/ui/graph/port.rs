@@ -23,20 +23,26 @@ use gtk::{
 };
 use pipewire::spa::Direction;
 
-use crate::MediaType;
-
 mod imp {
     use super::*;
 
+    use std::cell::Cell;
+
     use once_cell::{sync::Lazy, unsync::OnceCell};
-    use pipewire::spa::Direction;
+    use pipewire::spa::{format::MediaType, Direction};
 
     /// Graphical representation of a pipewire port.
-    #[derive(Default, glib::Properties)]
+    #[derive(glib::Properties)]
     #[properties(wrapper_type = super::Port)]
     pub struct Port {
         #[property(get, set, construct_only)]
         pub(super) pipewire_id: OnceCell<u32>,
+        #[property(
+            type = u32,
+            get = |_| self.media_type.get().as_raw(),
+            set = Self::set_media_type
+        )]
+        pub(super) media_type: Cell<MediaType>,
         #[property(
             name = "name", type = String,
             get = |this: &Self| this.label.text().to_string(),
@@ -47,6 +53,17 @@ mod imp {
         )]
         pub(super) label: gtk::Label,
         pub(super) direction: OnceCell<Direction>,
+    }
+
+    impl Default for Port {
+        fn default() -> Self {
+            Self {
+                pipewire_id: OnceCell::default(),
+                media_type: Cell::new(MediaType::Unknown),
+                label: gtk::Label::default(),
+                direction: OnceCell::default(),
+            }
+        }
     }
 
     #[glib::object_subclass]
@@ -184,6 +201,26 @@ mod imp {
             obj.add_controller(drop_target);
         }
     }
+
+    impl Port {
+        fn set_media_type(&self, media_type: u32) {
+            let media_type = MediaType::from_raw(media_type);
+
+            self.media_type.set(media_type);
+
+            for css_class in ["video", "audio", "midi"] {
+                self.obj().remove_css_class(css_class)
+            }
+
+            // Color the port according to its media type.
+            match media_type {
+                MediaType::Video => self.obj().add_css_class("video"),
+                MediaType::Audio => self.obj().add_css_class("audio"),
+                MediaType::Application | MediaType::Stream => self.obj().add_css_class("midi"),
+                _ => {}
+            }
+        }
+    }
 }
 
 glib::wrapper! {
@@ -192,7 +229,7 @@ glib::wrapper! {
 }
 
 impl Port {
-    pub fn new(id: u32, name: &str, direction: Direction, media_type: Option<MediaType>) -> Self {
+    pub fn new(id: u32, name: &str, direction: Direction) -> Self {
         // Create the widget and initialize needed fields
         let res: Self = glib::Object::builder()
             .property("pipewire-id", id)
@@ -207,14 +244,6 @@ impl Port {
 
         // Display a grab cursor when the mouse is over the port so the user knows it can be dragged to another port.
         res.set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
-
-        // Color the port according to its media type.
-        match media_type {
-            Some(MediaType::Video) => res.add_css_class("video"),
-            Some(MediaType::Audio) => res.add_css_class("audio"),
-            Some(MediaType::Midi) => res.add_css_class("midi"),
-            None => {}
-        }
 
         res
     }

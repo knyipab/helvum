@@ -20,7 +20,7 @@ mod pipewire_connection;
 mod ui;
 
 use gtk::prelude::*;
-use pipewire::spa::Direction;
+use pipewire::spa::{format::MediaType, Direction};
 
 /// Messages sent by the GTK thread to notify the pipewire thread.
 #[derive(Debug, Clone)]
@@ -44,17 +44,25 @@ pub enum PipewireMessage {
         node_id: u32,
         name: String,
         direction: Direction,
-        media_type: Option<MediaType>,
+    },
+    PortFormatChanged {
+        id: u32,
+        media_type: MediaType,
     },
     LinkAdded {
         id: u32,
         port_from: u32,
         port_to: u32,
         active: bool,
+        media_type: MediaType,
     },
     LinkStateChanged {
         id: u32,
         active: bool,
+    },
+    LinkFormatChanged {
+        id: u32,
+        media_type: MediaType,
     },
     NodeRemoved {
         id: u32,
@@ -72,13 +80,6 @@ pub enum PipewireMessage {
 pub enum NodeType {
     Input,
     Output,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum MediaType {
-    Audio,
-    Video,
-    Midi,
 }
 
 #[derive(Debug, Clone)]

@@ -16,15 +16,10 @@
 
 use std::collections::HashMap;
 
-use crate::MediaType;
-
 /// Any pipewire item we need to keep track of.
 /// These will be saved in the `State` struct associated with their id.
 pub(super) enum Item {
-    Node {
-        // Keep track of the nodes media type to color ports on it.
-        media_type: Option<MediaType>,
-    },
+    Node,
     Port {
         // Save the id of the node this is on so we can remove the port from it
         // when it is deleted.

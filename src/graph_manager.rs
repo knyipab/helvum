@@ -55,10 +55,14 @@ mod imp {
                 @weak self as imp => @default-return glib::ControlFlow::Continue,
                 move |msg| {
                     match msg {
-                        PipewireMessage::NodeAdded{ id, name, node_type } => imp.add_node(id, name.as_str(), node_type),
-                        PipewireMessage::PortAdded{ id, node_id, name, direction, media_type } => imp.add_port(id, name.as_str(), node_id, direction, media_type),
-                        PipewireMessage::LinkAdded{ id, port_from, port_to, active} => imp.add_link(id, port_from, port_to, active),
+                        PipewireMessage::NodeAdded { id, name, node_type } => imp.add_node(id, name.as_str(), node_type),
+                        PipewireMessage::PortAdded { id, node_id, name, direction } => imp.add_port(id, name.as_str(), node_id, direction),
+                        PipewireMessage::PortFormatChanged { id, media_type } => imp.port_media_type_changed(id, media_type),
+                        PipewireMessage::LinkAdded {
+                            id, port_from, port_to, active, media_type
+                        } => imp.add_link(id, port_from, port_to, active, media_type),
                         PipewireMessage::LinkStateChanged { id, active } => imp.link_state_changed(id, active),
+                        PipewireMessage::LinkFormatChanged { id, media_type } => imp.link_format_changed(id, media_type),
                         PipewireMessage::NodeRemoved { id } => imp.remove_node(id),
                         PipewireMessage::PortRemoved { id, node_id } => imp.remove_port(id, node_id),
                         PipewireMessage::LinkRemoved { id } => imp.remove_link(id)
@@ -96,14 +100,7 @@ mod imp {
         }
 
         /// Add a new port to the view.
-        fn add_port(
-            &self,
-            id: u32,
-            name: &str,
-            node_id: u32,
-            direction: pipewire::spa::Direction,
-            media_type: Option<MediaType>,
-        ) {
+        fn add_port(&self, id: u32, name: &str, node_id: u32, direction: pipewire::spa::Direction) {
             log::info!("Adding port to graph: id {}", id);
 
             let mut items = self.items.borrow_mut();
@@ -117,7 +114,7 @@ mod imp {
                 return;
             };
 
-            let port = graph::Port::new(id, name, direction, media_type);
+            let port = graph::Port::new(id, name, direction);
 
             // Create or delete a link if the widget emits the "port-toggled" signal.
             port.connect_local(
@@ -137,6 +134,21 @@ mod imp {
             items.insert(id, port.clone().upcast());
 
             node.add_port(port);
+        }
+
+        fn port_media_type_changed(&self, id: u32, media_type: MediaType) {
+            let items = self.items.borrow();
+
+            let Some(port) = items.get(&id) else {
+                log::warn!("Port (id: {id}) for changed media type not found in graph manager");
+                return;
+            };
+            let Some(port) = port.dynamic_cast_ref::<graph::Port>() else {
+                log::warn!("Graph Manager item under port id {id} is not a port");
+                return;
+            };
+
+            port.set_media_type(media_type.as_raw())
         }
 
         /// Remove the port with the id `id` from the node with the id `node_id`
@@ -167,7 +179,14 @@ mod imp {
         }
 
         /// Add a new link to the view.
-        fn add_link(&self, id: u32, output_port_id: u32, input_port_id: u32, active: bool) {
+        fn add_link(
+            &self,
+            id: u32,
+            output_port_id: u32,
+            input_port_id: u32,
+            active: bool,
+            media_type: MediaType,
+        ) {
             log::info!("Adding link to graph: id {}", id);
 
             let mut items = self.items.borrow_mut();
@@ -193,6 +212,7 @@ mod imp {
             link.set_output_port(Some(&output_port));
             link.set_input_port(Some(&input_port));
             link.set_active(active);
+            link.set_media_type(media_type);
 
             items.insert(id, link.clone().upcast());
 
@@ -221,6 +241,20 @@ mod imp {
             };
 
             link.set_active(active);
+        }
+
+        fn link_format_changed(&self, id: u32, media_type: pipewire::spa::format::MediaType) {
+            let items = self.items.borrow();
+
+            let Some(link) = items.get(&id) else {
+                log::warn!("Link (id: {id}) for changed media type not found in graph manager");
+                return;
+            };
+            let Some(link) = link.dynamic_cast_ref::<graph::Link>() else {
+                log::warn!("Graph Manager item under link id {id} is not a link");
+                return;
+            };
+            link.set_media_type(media_type);
         }
 
         // Toggle a link between the two specified ports on the remote pipewire server.

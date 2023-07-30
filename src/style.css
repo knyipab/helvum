@@ -15,23 +15,23 @@
    SPDX-License-Identifier: GPL-3.0-only
 */
 
-@define-color audio rgb(50,100,240);
-@define-color video rgb(200,200,0);
-@define-color midi rgb(200,0,50);
-@define-color graphview-link #808080;
+@define-color media-type-audio   rgb( 50, 100, 240);
+@define-color media-type-video   rgb(200, 200,   0);
+@define-color media-type-midi    rgb(200,   0,  50);
+@define-color media-type-unknown rgb(128, 128, 128);
 
 .audio {
-    background: @audio;
+    background: @media-type-audio;
     color: black;
 }
 
 .video {
-    background: @video;
+    background: @media-type-video;
     color: black;
 }
 
 .midi {
-    background: @midi;
+    background: @media-type-midi;
     color: black;
 }
 

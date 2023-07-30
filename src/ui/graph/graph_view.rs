@@ -43,7 +43,26 @@ mod imp {
     };
     use log::warn;
     use once_cell::sync::Lazy;
+    use pipewire::spa::format::MediaType;
     use pipewire::spa::Direction;
+
+    pub struct Colors {
+        audio: gdk::RGBA,
+        video: gdk::RGBA,
+        midi: gdk::RGBA,
+        unknown: gdk::RGBA,
+    }
+
+    impl Colors {
+        pub fn color_for_media_type(&self, media_type: MediaType) -> &gdk::RGBA {
+            match media_type {
+                MediaType::Audio => &self.audio,
+                MediaType::Video => &self.video,
+                MediaType::Stream | MediaType::Application => &self.midi,
+                _ => &self.unknown,
+            }
+        }
+    }
 
     pub struct DragState {
         node: glib::WeakRef<Node>,
@@ -510,6 +529,7 @@ mod imp {
             output_anchor: &Point,
             input_anchor: &Point,
             active: bool,
+            color: &gdk::RGBA,
         ) {
             let output_x: f64 = output_anchor.x().into();
             let output_y: f64 = output_anchor.y().into();
@@ -522,6 +542,13 @@ mod imp {
             } else {
                 link_cr.set_dash(&[10.0, 5.0], 0.0);
             }
+
+            link_cr.set_source_rgba(
+                color.red().into(),
+                color.green().into(),
+                color.blue().into(),
+                color.alpha().into(),
+            );
 
             // If the output port is farther right than the input port and they have
             // a similar y coordinate, apply a y offset to the control points
@@ -551,7 +578,7 @@ mod imp {
             };
         }
 
-        fn draw_dragged_link(&self, port: &Port, link_cr: &cairo::Context) {
+        fn draw_dragged_link(&self, port: &Port, link_cr: &cairo::Context, colors: &Colors) {
             let Some(port_anchor) = port.compute_point(&*self.obj(), &port.link_anchor()) else {
                 return;
             };
@@ -579,7 +606,9 @@ mod imp {
                 _ => unreachable!(),
             };
 
-            self.draw_link(link_cr, output_anchor, input_anchor, false);
+            let color = &colors.color_for_media_type(MediaType::from_raw(port.media_type()));
+
+            self.draw_link(link_cr, output_anchor, input_anchor, false, color);
         }
 
         fn snapshot_links(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
@@ -594,30 +623,45 @@ mod imp {
 
             link_cr.set_line_width(2.0 * self.zoom_factor.get());
 
-            let rgba = widget
-                .style_context()
-                .lookup_color("graphview-link")
-                .unwrap_or(gtk::gdk::RGBA::BLACK);
-
-            link_cr.set_source_rgba(
-                rgba.red().into(),
-                rgba.green().into(),
-                rgba.blue().into(),
-                rgba.alpha().into(),
-            );
+            let colors = Colors {
+                audio: widget
+                    .style_context()
+                    .lookup_color("media-type-audio")
+                    .expect("color not found"),
+                video: widget
+                    .style_context()
+                    .lookup_color("media-type-video")
+                    .expect("color not found"),
+                midi: widget
+                    .style_context()
+                    .lookup_color("media-type-midi")
+                    .expect("color not found"),
+                unknown: widget
+                    .style_context()
+                    .lookup_color("media-type-unknown")
+                    .expect("color not found"),
+            };
 
             for link in self.links.borrow().iter() {
+                let color = &colors.color_for_media_type(link.media_type());
+
                 // TODO: Do not draw links when they are outside the view
                 let Some((output_anchor, input_anchor)) = self.get_link_coordinates(link) else {
                     warn!("Could not get allocation of ports of link: {:?}", link);
                     continue;
                 };
 
-                self.draw_link(&link_cr, &output_anchor, &input_anchor, link.active());
+                self.draw_link(
+                    &link_cr,
+                    &output_anchor,
+                    &input_anchor,
+                    link.active(),
+                    color,
+                );
             }
 
             if let Some(port) = self.dragged_port.upgrade() {
-                self.draw_dragged_link(&port, &link_cr);
+                self.draw_dragged_link(&port, &link_cr, &colors);
             }
         }
 
@@ -789,6 +833,12 @@ impl GraphView {
     pub fn add_link(&self, link: Link) {
         link.connect_notify_local(
             Some("active"),
+            glib::clone!(@weak self as graph => move |_, _| {
+                graph.queue_draw();
+            }),
+        );
+        link.connect_notify_local(
+            Some("media-type"),
             glib::clone!(@weak self as graph => move |_, _| {
                 graph.queue_draw();
             }),
