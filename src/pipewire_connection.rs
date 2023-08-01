@@ -243,9 +243,7 @@ fn handle_link(
                 // TODO -- check other values that might have changed
             } else {
                 // First time we get info. We can now notify the gtk thread of a new link.
-                let node_from = info.output_node_id();
                 let port_from = info.output_port_id();
-                let node_to = info.input_node_id();
                 let port_to = info.input_port_id();
 
                 state.insert(id, Item::Link {
@@ -254,9 +252,7 @@ fn handle_link(
 
                 sender.send(PipewireMessage::LinkAdded {
                     id,
-                    node_from,
                     port_from,
-                    node_to,
                     port_to,
                     active: matches!(info.state(), LinkState::Active)
                 }).expect(

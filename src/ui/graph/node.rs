@@ -17,14 +17,15 @@
 use gtk::{glib, prelude::*, subclass::prelude::*};
 use pipewire::spa::Direction;
 
-use std::collections::HashMap;
-
 use super::Port;
 
 mod imp {
     use super::*;
 
-    use std::cell::{Cell, RefCell};
+    use std::{
+        cell::{Cell, RefCell},
+        collections::HashSet,
+    };
 
     #[derive(glib::Properties)]
     #[properties(wrapper_type = super::Node)]
@@ -41,7 +42,7 @@ mod imp {
             }
         )]
         pub(super) label: gtk::Label,
-        pub(super) ports: RefCell<HashMap<u32, Port>>,
+        pub(super) ports: RefCell<HashSet<Port>>,
         pub(super) num_ports_in: Cell<i32>,
         pub(super) num_ports_out: Cell<i32>,
     }
@@ -74,7 +75,7 @@ mod imp {
                 pipewire_id: Cell::new(0),
                 grid,
                 label,
-                ports: RefCell::new(HashMap::new()),
+                ports: RefCell::new(HashSet::new()),
                 num_ports_in: Cell::new(0),
                 num_ports_out: Cell::new(0),
             }
@@ -120,7 +121,7 @@ impl Node {
             .build()
     }
 
-    pub fn add_port(&mut self, id: u32, port: Port) {
+    pub fn add_port(&self, port: Port) {
         let imp = self.imp();
 
         match port.direction() {
@@ -134,22 +135,20 @@ impl Node {
             }
         }
 
-        imp.ports.borrow_mut().insert(id, port);
+        imp.ports.borrow_mut().insert(port);
     }
 
-    pub fn get_port(&self, id: u32) -> Option<Port> {
-        self.imp().ports.borrow_mut().get(&id).cloned()
-    }
-
-    pub fn remove_port(&self, id: u32) {
+    pub fn remove_port(&self, port: &Port) {
         let imp = self.imp();
-        if let Some(port) = imp.ports.borrow_mut().remove(&id) {
+        if imp.ports.borrow_mut().remove(port) {
             match port.direction() {
                 Direction::Input => imp.num_ports_in.set(imp.num_ports_in.get() - 1),
                 Direction::Output => imp.num_ports_in.set(imp.num_ports_out.get() - 1),
             }
 
             port.unparent();
+        } else {
+            log::warn!("Tried to remove non-existant port widget from node");
         }
     }
 }

@@ -15,6 +15,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 mod application;
+mod graph_manager;
 mod pipewire_connection;
 mod ui;
 
@@ -24,7 +25,7 @@ use pipewire::spa::Direction;
 
 /// Messages sent by the GTK thread to notify the pipewire thread.
 #[derive(Debug, Clone)]
-enum GtkMessage {
+pub enum GtkMessage {
     /// Toggle a link between the two specified ports.
     ToggleLink { port_from: u32, port_to: u32 },
     /// Quit the event loop and let the thread finish.
@@ -33,7 +34,7 @@ enum GtkMessage {
 
 /// Messages sent by the pipewire thread to notify the GTK thread.
 #[derive(Debug, Clone)]
-enum PipewireMessage {
+pub enum PipewireMessage {
     NodeAdded {
         id: u32,
         name: String,
@@ -48,9 +49,7 @@ enum PipewireMessage {
     },
     LinkAdded {
         id: u32,
-        node_from: u32,
         port_from: u32,
-        node_to: u32,
         port_to: u32,
         active: bool,
     },

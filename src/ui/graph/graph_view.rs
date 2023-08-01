@@ -22,9 +22,8 @@ use gtk::{
     prelude::*,
     subclass::prelude::*,
 };
-use log::{error, warn};
 
-use std::{cmp::Ordering, collections::HashMap};
+use std::cmp::Ordering;
 
 use super::{Link, Node, Port};
 use crate::NodeType;
@@ -35,6 +34,7 @@ mod imp {
     use super::*;
 
     use std::cell::{Cell, RefCell};
+    use std::collections::{HashMap, HashSet};
 
     use gtk::{
         gdk::{self, RGBA},
@@ -56,9 +56,9 @@ mod imp {
     #[derive(Default)]
     pub struct GraphView {
         /// Stores nodes and their positions.
-        pub(super) nodes: RefCell<HashMap<u32, (Node, Point)>>,
+        pub(super) nodes: RefCell<HashMap<Node, Point>>,
         /// Stores the link and whether it is currently active.
-        pub(super) links: RefCell<HashMap<u32, Link>>,
+        pub(super) links: RefCell<HashSet<Link>>,
         pub hadjustment: RefCell<Option<gtk::Adjustment>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
         pub zoom_factor: Cell<f64>,
@@ -95,7 +95,7 @@ mod imp {
         fn dispose(&self) {
             self.nodes
                 .borrow()
-                .values()
+                .iter()
                 .for_each(|(node, _)| node.unparent())
         }
 
@@ -152,7 +152,7 @@ mod imp {
         fn size_allocate(&self, _width: i32, _height: i32, baseline: i32) {
             let widget = &*self.obj();
 
-            for (node, point) in self.nodes.borrow().values() {
+            for (node, point) in self.nodes.borrow().iter() {
                 let (_, natural_size) = node.preferred_size();
 
                 let transform = self
@@ -184,7 +184,7 @@ mod imp {
             // Draw all visible children
             self.nodes
                 .borrow()
-                .values()
+                .iter()
                 // Cull nodes from rendering when they are outside the visible canvas area
                 .filter(|(node, _)| alloc.intersect(&node.allocation()).is_some())
                 .for_each(|(node, _)| widget.snapshot_child(node, snapshot));
@@ -430,7 +430,7 @@ mod imp {
                 rgba.alpha().into(),
             );
 
-            for link in self.links.borrow().values() {
+            for link in self.links.borrow().iter() {
                 // TODO: Do not draw links when they are outside the view
                 if let Some((from_x, from_y, to_x, to_y)) = self.get_link_coordinates(link) {
                     link_cr.move_to(from_x, from_y);
@@ -605,7 +605,7 @@ impl GraphView {
         self.set_property("zoom-factor", zoom_factor);
     }
 
-    pub fn add_node(&self, id: u32, node: Node, node_type: Option<NodeType>) {
+    pub fn add_node(&self, node: Node, node_type: Option<NodeType>) {
         let imp = self.imp();
         node.set_parent(self);
 
@@ -622,7 +622,7 @@ impl GraphView {
         let y = imp
             .nodes
             .borrow()
-            .values()
+            .iter()
             .map(|node| {
                 // Map nodes to their locations
                 let point = self.node_position(&node.0.clone().upcast()).unwrap();
@@ -638,68 +638,33 @@ impl GraphView {
             })
             .map_or(20_f32, |(_x, y)| y + 120.0);
 
-        imp.nodes.borrow_mut().insert(id, (node, Point::new(x, y)));
+        imp.nodes.borrow_mut().insert(node, Point::new(x, y));
     }
 
-    pub fn remove_node(&self, id: u32) {
+    pub fn remove_node(&self, node: &Node) {
         let mut nodes = self.imp().nodes.borrow_mut();
-        if let Some((node, _)) = nodes.remove(&id) {
+
+        if nodes.remove(node).is_some() {
             node.unparent();
         } else {
-            warn!("Tried to remove non-existant node (id={}) from graph", id);
+            log::warn!("Tried to remove non-existant node widget from graph");
         }
     }
 
-    pub fn add_port(&self, node_id: u32, port_id: u32, port: Port) {
-        if let Some((node, _)) = self.imp().nodes.borrow_mut().get_mut(&node_id) {
-            node.add_port(port_id, port);
-        } else {
-            error!(
-                "Node with id {} not found when trying to add port with id {} to graph",
-                node_id, port_id
-            );
-        }
-    }
-
-    pub fn remove_port(&self, id: u32, node_id: u32) {
-        let nodes = self.imp().nodes.borrow();
-        if let Some((node, _)) = nodes.get(&node_id) {
-            node.remove_port(id);
-        }
-    }
-
-    pub fn add_link(&self, link_id: u32, link: crate::PipewireLink, active: bool) {
-        let nodes = self.imp().nodes.borrow();
-
-        let output_port = nodes
-            .get(&link.node_from)
-            .and_then(|(node, _)| node.get_port(link.port_from));
-
-        let input_port = nodes
-            .get(&link.node_to)
-            .and_then(|(node, _)| node.get_port(link.port_to));
-
-        let link = Link::new();
-        link.set_input_port(input_port.as_ref());
-        link.set_output_port(output_port.as_ref());
-        link.set_active(active);
-
-        self.imp().links.borrow_mut().insert(link_id, link);
+    pub fn add_link(&self, link: Link) {
+        link.connect_notify_local(
+            Some("active"),
+            glib::clone!(@weak self as graph => move |_, _| {
+                graph.queue_draw();
+            }),
+        );
+        self.imp().links.borrow_mut().insert(link);
         self.queue_draw();
     }
 
-    pub fn set_link_state(&self, link_id: u32, active: bool) {
-        if let Some(link) = self.imp().links.borrow_mut().get_mut(&link_id) {
-            link.set_active(active);
-            self.queue_draw();
-        } else {
-            warn!("Link state changed on unknown link (id={})", link_id);
-        }
-    }
-
-    pub fn remove_link(&self, id: u32) {
+    pub fn remove_link(&self, link: &Link) {
         let mut links = self.imp().links.borrow_mut();
-        links.remove(&id);
+        links.remove(link);
 
         self.queue_draw();
     }
@@ -708,30 +673,22 @@ impl GraphView {
     ///
     /// The returned position is in canvas-space (non-zoomed, (0, 0) fixed in the middle of the canvas).
     pub(super) fn node_position(&self, node: &Node) -> Option<Point> {
-        self.imp()
-            .nodes
-            .borrow()
-            .get(&node.pipewire_id())
-            .map(|(_, point)| *point)
+        self.imp().nodes.borrow().get(node).copied()
     }
 
     pub(super) fn move_node(&self, widget: &Node, point: &Point) {
         let mut nodes = self.imp().nodes.borrow_mut();
-        let node = nodes
-            .get_mut(&widget.pipewire_id())
-            .expect("Node is not on the graph");
+        let node_point = nodes.get_mut(widget).expect("Node is not on the graph");
 
         // Clamp the new position to within the graph, so a node can't be moved outside it and be lost.
-        node.1 = Point::new(
-            point.x().clamp(
-                -(CANVAS_SIZE / 2.0) as f32,
-                (CANVAS_SIZE / 2.0) as f32 - widget.width() as f32,
-            ),
-            point.y().clamp(
-                -(CANVAS_SIZE / 2.0) as f32,
-                (CANVAS_SIZE / 2.0) as f32 - widget.height() as f32,
-            ),
-        );
+        node_point.set_x(point.x().clamp(
+            -(CANVAS_SIZE / 2.0) as f32,
+            (CANVAS_SIZE / 2.0) as f32 - widget.width() as f32,
+        ));
+        node_point.set_y(point.y().clamp(
+            -(CANVAS_SIZE / 2.0) as f32,
+            (CANVAS_SIZE / 2.0) as f32 - widget.height() as f32,
+        ));
 
         self.queue_allocate();
     }

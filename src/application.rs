@@ -14,18 +14,15 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::cell::RefCell;
-
 use gtk::{
     gio,
-    glib::{self, clone, Continue, Receiver},
+    glib::{self, clone, Receiver},
     prelude::*,
     subclass::prelude::*,
 };
-use log::info;
-use pipewire::{channel::Sender, spa::Direction};
+use pipewire::channel::Sender;
 
-use crate::{ui, GtkMessage, MediaType, NodeType, PipewireLink, PipewireMessage};
+use crate::{graph_manager::GraphManager, ui, GtkMessage, PipewireMessage};
 
 static STYLE: &str = include_str!("style.css");
 
@@ -37,7 +34,7 @@ mod imp {
     #[derive(Default)]
     pub struct Application {
         pub(super) graphview: ui::graph::GraphView,
-        pub(super) pw_sender: OnceCell<RefCell<Sender<GtkMessage>>>,
+        pub(super) graph_manager: OnceCell<GraphManager>,
     }
 
     #[glib::object_subclass]
@@ -51,6 +48,7 @@ mod imp {
     impl ApplicationImpl for Application {
         fn activate(&self) {
             let app = &*self.obj();
+
             let scrollwindow = gtk::ScrolledWindow::builder()
                 .child(&self.graphview)
                 .build();
@@ -117,11 +115,10 @@ impl Application {
             .build();
 
         let imp = app.imp();
-        imp.pw_sender
-            .set(RefCell::new(pw_sender))
-            // Discard the returned sender, as it does not implement `Debug`.
-            .map_err(|_| ())
-            .expect("pw_sender field was already set");
+
+        imp.graph_manager
+            .set(GraphManager::new(&imp.graphview, pw_sender, gtk_receiver))
+            .expect("Should be able to set graph manager");
 
         // Add <Control-Q> shortcut for quitting the application.
         let quit = gtk::gio::SimpleAction::new("quit", None);
@@ -131,138 +128,6 @@ impl Application {
         app.set_accels_for_action("app.quit", &["<Control>Q"]);
         app.add_action(&quit);
 
-        // React to messages received from the pipewire thread.
-        gtk_receiver.attach(
-            None,
-            clone!(
-                @weak app => @default-return Continue(true),
-                move |msg| {
-                    match msg {
-                        PipewireMessage::NodeAdded{ id, name, node_type } => app.add_node(id, name.as_str(), node_type),
-                        PipewireMessage::PortAdded{ id, node_id, name, direction, media_type } => app.add_port(id, name.as_str(), node_id, direction, media_type),
-                        PipewireMessage::LinkAdded{ id, node_from, port_from, node_to, port_to, active} => app.add_link(id, node_from, port_from, node_to, port_to, active),
-                        PipewireMessage::LinkStateChanged { id, active } => app.link_state_changed(id, active), // TODO
-                        PipewireMessage::NodeRemoved { id } => app.remove_node(id),
-                        PipewireMessage::PortRemoved { id, node_id } => app.remove_port(id, node_id),
-                        PipewireMessage::LinkRemoved { id } => app.remove_link(id)
-                    };
-                    Continue(true)
-                }
-            ),
-        );
-
         app
-    }
-
-    /// Add a new node to the view.
-    fn add_node(&self, id: u32, name: &str, node_type: Option<NodeType>) {
-        info!("Adding node to graph: id {}", id);
-
-        self.imp()
-            .graphview
-            .add_node(id, ui::graph::Node::new(name, id), node_type);
-    }
-
-    /// Add a new port to the view.
-    fn add_port(
-        &self,
-        id: u32,
-        name: &str,
-        node_id: u32,
-        direction: Direction,
-        media_type: Option<MediaType>,
-    ) {
-        info!("Adding port to graph: id {}", id);
-
-        let port = ui::graph::Port::new(id, name, direction, media_type);
-
-        // Create or delete a link if the widget emits the "port-toggled" signal.
-        port.connect_local(
-            "port_toggled",
-            false,
-            clone!(@weak self as app => @default-return None, move |args| {
-                // Args always look like this: &[widget, id_port_from, id_port_to]
-                let port_from = args[1].get::<u32>().unwrap();
-                let port_to = args[2].get::<u32>().unwrap();
-
-                app.toggle_link(port_from, port_to);
-
-                None
-            }),
-        );
-
-        self.imp().graphview.add_port(node_id, id, port);
-    }
-
-    /// Add a new link to the view.
-    fn add_link(
-        &self,
-        id: u32,
-        node_from: u32,
-        port_from: u32,
-        node_to: u32,
-        port_to: u32,
-        active: bool,
-    ) {
-        info!("Adding link to graph: id {}", id);
-
-        // FIXME: Links should be colored depending on the data they carry (video, audio, midi) like ports are.
-
-        // Update graph to contain the new link.
-        self.imp().graphview.add_link(
-            id,
-            PipewireLink {
-                node_from,
-                port_from,
-                node_to,
-                port_to,
-            },
-            active,
-        );
-    }
-
-    fn link_state_changed(&self, id: u32, active: bool) {
-        info!(
-            "Link state changed: Link (id={}) is now {}",
-            id,
-            if active { "active" } else { "inactive" }
-        );
-
-        self.imp().graphview.set_link_state(id, active);
-    }
-
-    // Toggle a link between the two specified ports on the remote pipewire server.
-    fn toggle_link(&self, port_from: u32, port_to: u32) {
-        let sender = self
-            .imp()
-            .pw_sender
-            .get()
-            .expect("pw_sender not set")
-            .borrow_mut();
-        sender
-            .send(GtkMessage::ToggleLink { port_from, port_to })
-            .expect("Failed to send message");
-    }
-
-    /// Remove the node with the specified id from the view.
-    fn remove_node(&self, id: u32) {
-        info!("Removing node from graph: id {}", id);
-
-        self.imp().graphview.remove_node(id);
-    }
-
-    /// Remove the port with the id `id` from the node with the id `node_id`
-    /// from the view.
-    fn remove_port(&self, id: u32, node_id: u32) {
-        info!("Removing port from graph: id {}, node_id: {}", id, node_id);
-
-        self.imp().graphview.remove_port(id, node_id);
-    }
-
-    /// Remove the link with the specified id from the view.
-    fn remove_link(&self, id: u32) {
-        info!("Removing link from graph: id {}", id);
-
-        self.imp().graphview.remove_link(id);
     }
 }
