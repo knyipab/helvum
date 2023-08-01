@@ -22,16 +22,24 @@ use std::collections::HashMap;
 use super::Port;
 
 mod imp {
-    use glib::ParamFlags;
-    use once_cell::sync::Lazy;
-
     use super::*;
 
     use std::cell::{Cell, RefCell};
 
+    #[derive(glib::Properties)]
+    #[properties(wrapper_type = super::Node)]
     pub struct Node {
+        #[property(get, set, construct_only)]
         pub(super) pipewire_id: Cell<u32>,
         pub(super) grid: gtk::Grid,
+        #[property(
+            name = "name", type = String,
+            get = |this: &Self| this.label.text().to_string(),
+            set = |this: &Self, val| {
+                this.label.set_text(val);
+                this.label.set_tooltip_text(Some(val));
+            }
+        )]
         pub(super) label: gtk::Label,
         pub(super) ports: RefCell<HashMap<u32, Port>>,
         pub(super) num_ports_in: Cell<i32>,
@@ -80,35 +88,15 @@ mod imp {
         }
 
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
-                vec![
-                    glib::ParamSpecUInt::builder("pipewire-id")
-                        .flags(ParamFlags::READWRITE | ParamFlags::CONSTRUCT_ONLY)
-                        .build(),
-                    glib::ParamSpecString::builder("name").build(),
-                ]
-            });
-
-            PROPERTIES.as_ref()
+            Self::derived_properties()
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "pipewire-id" => self.pipewire_id.get().to_value(),
-                "name" => self.label.text().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            Self::derived_property(self, id, pspec)
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            match pspec.name() {
-                "name" => {
-                    self.label.set_text(value.get().unwrap());
-                    self.label.set_tooltip_text(value.get().ok());
-                }
-                "pipewire-id" => self.pipewire_id.set(value.get().unwrap()),
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            Self::derived_set_property(self, id, value, pspec)
         }
 
         fn dispose(&self) {
@@ -130,20 +118,6 @@ impl Node {
             .property("name", &name)
             .property("pipewire-id", &pipewire_id)
             .build()
-    }
-
-    pub fn pipewire_id(&self) -> u32 {
-        self.property("pipewire-id")
-    }
-
-    /// Get the nodes `name` property, which represents the displayed name.
-    pub fn name(&self) -> String {
-        self.property("name")
-    }
-
-    /// Set the nodes `name` property, which represents the displayed name.
-    pub fn set_name(&self, name: &str) {
-        self.set_property("name", name);
     }
 
     pub fn add_port(&mut self, id: u32, port: Port) {
