@@ -115,8 +115,8 @@ glib::wrapper! {
 impl Node {
     pub fn new(name: &str, pipewire_id: u32) -> Self {
         glib::Object::builder()
-            .property("name", &name)
-            .property("pipewire-id", &pipewire_id)
+            .property("name", name)
+            .property("pipewire-id", pipewire_id)
             .build()
     }
 

@@ -151,7 +151,7 @@ mod imp {
         fn update_zoom_factor_text(&self, zoom_factor: f64) {
             self.entry
                 .buffer()
-                .set_text(&format!("{factor:.0}%", factor = zoom_factor * 100.));
+                .set_text(format!("{factor:.0}%", factor = zoom_factor * 100.));
         }
     }
 }

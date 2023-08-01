@@ -112,3 +112,9 @@ impl Link {
         self.set_property("active", active);
     }
 }
+
+impl Default for Link {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -125,8 +125,8 @@ impl Port {
     pub fn new(id: u32, name: &str, direction: Direction, media_type: Option<MediaType>) -> Self {
         // Create the widget and initialize needed fields
         let res: Self = glib::Object::builder()
-            .property("pipewire-id", &id)
-            .property("name", &name)
+            .property("pipewire-id", id)
+            .property("name", name)
             .build();
 
         let imp = res.imp();

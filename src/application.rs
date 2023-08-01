@@ -113,7 +113,7 @@ impl Application {
         pw_sender: Sender<GtkMessage>,
     ) -> Self {
         let app: Application = glib::Object::builder()
-            .property("application-id", &"org.pipewire.Helvum")
+            .property("application-id", "org.pipewire.Helvum")
             .build();
 
         let imp = app.imp();

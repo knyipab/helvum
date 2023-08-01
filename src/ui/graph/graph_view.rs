@@ -717,7 +717,7 @@ impl GraphView {
 
     pub(super) fn move_node(&self, widget: &Node, point: &Point) {
         let mut nodes = self.imp().nodes.borrow_mut();
-        let mut node = nodes
+        let node = nodes
             .get_mut(&widget.pipewire_id())
             .expect("Node is not on the graph");
 
