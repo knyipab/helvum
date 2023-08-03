@@ -17,6 +17,7 @@
 use gtk::{
     gdk,
     glib::{self, clone, subclass::Signal},
+    graphene,
     prelude::*,
     subclass::prelude::*,
 };
@@ -222,5 +223,21 @@ impl Port {
             .direction
             .get()
             .expect("Port direction is not set")
+    }
+
+    pub fn link_anchor(&self) -> graphene::Point {
+        let style_context = self.style_context();
+        let padding_right: f32 = style_context.padding().right().into();
+        let border_right: f32 = style_context.border().right().into();
+        let padding_left: f32 = style_context.padding().left().into();
+        let border_left: f32 = style_context.border().left().into();
+
+        graphene::Point::new(
+            match self.direction() {
+                Direction::Output => self.width() as f32 + padding_right + border_right,
+                Direction::Input => 0.0 - padding_left - border_left,
+            },
+            self.height() as f32 / 2.0,
+        )
     }
 }

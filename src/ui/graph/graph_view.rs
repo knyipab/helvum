@@ -432,77 +432,69 @@ mod imp {
 
             for link in self.links.borrow().iter() {
                 // TODO: Do not draw links when they are outside the view
-                if let Some((from_x, from_y, to_x, to_y)) = self.get_link_coordinates(link) {
-                    link_cr.move_to(from_x, from_y);
-
-                    // Use dashed line for inactive links, full line otherwise.
-                    if link.active() {
-                        link_cr.set_dash(&[], 0.0);
-                    } else {
-                        link_cr.set_dash(&[10.0, 5.0], 0.0);
-                    }
-
-                    // If the output port is farther right than the input port and they have
-                    // a similar y coordinate, apply a y offset to the control points
-                    // so that the curve sticks out a bit.
-                    let y_control_offset = if from_x > to_x {
-                        f64::max(0.0, 25.0 - (from_y - to_y).abs())
-                    } else {
-                        0.0
-                    };
-
-                    // Place curve control offset by half the x distance between the two points.
-                    // This makes the curve scale well for varying distances between the two ports,
-                    // especially when the output port is farther right than the input port.
-                    let half_x_dist = f64::abs(from_x - to_x) / 2.0;
-                    link_cr.curve_to(
-                        from_x + half_x_dist,
-                        from_y - y_control_offset,
-                        to_x - half_x_dist,
-                        to_y - y_control_offset,
-                        to_x,
-                        to_y,
-                    );
-
-                    if let Err(e) = link_cr.stroke() {
-                        warn!("Failed to draw graphview links: {}", e);
-                    };
-                } else {
+                let Some((output_anchor, input_anchor)) = self.get_link_coordinates(link) else {
                     warn!("Could not get allocation of ports of link: {:?}", link);
+                    continue;
+                };
+
+                let output_x: f64 = output_anchor.x().into();
+                let output_y: f64 = output_anchor.y().into();
+                let input_x: f64 = input_anchor.x().into();
+                let input_y: f64 = input_anchor.y().into();
+
+                // Use dashed line for inactive links, full line otherwise.
+                if link.active() {
+                    link_cr.set_dash(&[], 0.0);
+                } else {
+                    link_cr.set_dash(&[10.0, 5.0], 0.0);
                 }
+
+                // If the output port is farther right than the input port and they have
+                // a similar y coordinate, apply a y offset to the control points
+                // so that the curve sticks out a bit.
+                let y_control_offset = if output_x > input_x {
+                    f64::max(0.0, 25.0 - (output_y - input_y).abs())
+                } else {
+                    0.0
+                };
+
+                // Place curve control offset by half the x distance between the two points.
+                // This makes the curve scale well for varying distances between the two ports,
+                // especially when the output port is farther right than the input port.
+                let half_x_dist = f64::abs(output_x - input_x) / 2.0;
+                link_cr.move_to(output_x, output_y);
+                link_cr.curve_to(
+                    output_x + half_x_dist,
+                    output_y - y_control_offset,
+                    input_x - half_x_dist,
+                    input_y - y_control_offset,
+                    input_x,
+                    input_y,
+                );
+
+                if let Err(e) = link_cr.stroke() {
+                    warn!("Failed to draw graphview links: {}", e);
+                };
             }
         }
 
         /// Get coordinates for the drawn link to start at and to end at.
         ///
         /// # Returns
-        /// `Some((from_x, from_y, to_x, to_y))` if all objects the links refers to exist as widgets.
-        fn get_link_coordinates(&self, link: &Link) -> Option<(f64, f64, f64, f64)> {
+        /// `Some((output_anchor, input_anchor))` if all objects the links refers to exist as widgets
+        /// and those widgets are contained by the graph.
+        ///
+        /// The returned coordinates are in screen-space of the graph.
+        fn get_link_coordinates(&self, link: &Link) -> Option<(graphene::Point, graphene::Point)> {
             let widget = &*self.obj();
 
             let output_port = link.output_port()?;
-
-            let output_port_padding =
-                (output_port.allocated_width() - output_port.width()) as f64 / 2.0;
-
-            let (from_x, from_y) = output_port.translate_coordinates(
-                widget,
-                output_port.width() as f64 + output_port_padding,
-                (output_port.height() / 2) as f64,
-            )?;
+            let output_anchor = output_port.compute_point(widget, &output_port.link_anchor())?;
 
             let input_port = link.input_port()?;
+            let input_anchor = input_port.compute_point(widget, &input_port.link_anchor())?;
 
-            let input_port_padding =
-                (input_port.allocated_width() - input_port.width()) as f64 / 2.0;
-
-            let (to_x, to_y) = input_port.translate_coordinates(
-                widget,
-                -input_port_padding,
-                (input_port.height() / 2) as f64,
-            )?;
-
-            Some((from_x, from_y, to_x, to_y))
+            Some((output_anchor, input_anchor))
         }
 
         fn set_adjustment(
