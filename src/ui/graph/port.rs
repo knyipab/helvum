@@ -16,27 +16,14 @@
 
 use gtk::{
     gdk,
-    glib::{self, clone, subclass::Signal},
+    glib::{self, subclass::Signal},
     graphene,
     prelude::*,
     subclass::prelude::*,
 };
-use log::{trace, warn};
 use pipewire::spa::Direction;
 
 use crate::MediaType;
-
-/// A helper struct for linking a output port to an input port.
-/// It carries the output ports id.
-#[derive(Clone, Debug, glib::Boxed)]
-#[boxed_type(name = "HelvumForwardLink")]
-struct ForwardLink(u32);
-
-/// A helper struct for linking an input to an output port.
-/// It carries the input ports id.
-#[derive(Clone, Debug, glib::Boxed)]
-#[boxed_type(name = "HelvumReversedLink")]
-struct ReversedLink(u32);
 
 mod imp {
     use super::*;
@@ -85,6 +72,8 @@ mod imp {
             self.label.set_lines(2);
             self.label.set_max_width_chars(20);
             self.label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+
+            self.setup_port_drag_and_drop();
         }
 
         fn dispose(&self) {
@@ -115,6 +104,96 @@ mod imp {
         }
     }
     impl WidgetImpl for Port {}
+
+    impl Port {
+        fn setup_port_drag_and_drop(&self) {
+            let obj = &*self.obj();
+
+            // Add a drag source and drop target controller with the type depending on direction,
+            // they will be responsible for link creation by dragging an output port onto an input port or the other way around.
+            // The port will simply provide its pipewire id to the drag target.
+            // The drop target will accept the source port and use it to emit its `port-toggled` signal.
+
+            // FIXME: We should protect against different media types, e.g. it should not be possible to drop a video port on an audio port.
+
+            let drag_src = gtk::DragSource::builder()
+                .content(&gdk::ContentProvider::for_value(&obj.to_value()))
+                .build();
+            drag_src.connect_drag_begin(|drag_source, _| {
+                let port = drag_source
+                    .widget()
+                    .dynamic_cast::<super::Port>()
+                    .expect("Widget should be a Port");
+
+                log::trace!("Drag started from port {}", port.pipewire_id());
+
+                let paintable = gtk::WidgetPaintable::new(Some(&port));
+                drag_source.set_icon(Some(&paintable), 0, 0);
+            });
+            drag_src.connect_drag_cancel(|drag_source, _, _| {
+                let port = drag_source
+                    .widget()
+                    .dynamic_cast::<super::Port>()
+                    .expect("Widget should be a Port");
+
+                log::trace!("Drag from port {} was cancelled", port.pipewire_id());
+
+                false
+            });
+            obj.add_controller(drag_src);
+
+            let drop_target =
+                gtk::DropTarget::new(super::Port::static_type(), gdk::DragAction::COPY);
+            drop_target.set_preload(true);
+            drop_target.connect_value_notify(|drop_target| {
+                let port = drop_target
+                    .widget()
+                    .dynamic_cast::<super::Port>()
+                    .expect("Widget should be a Port");
+
+                let Some(value) = drop_target.value() else {
+                    return;
+                };
+
+                let other_port: super::Port = value.get().expect("Drop value should be a port");
+
+                // Disallow drags between two ports that have the same direction
+                if !port.is_linkable_to(&other_port) {
+                    // FIXME: For some reason, this prints error:
+                    //        "gdk_drop_get_actions: assertion 'GDK_IS_DROP (self)' failed"
+                    drop_target.reject();
+                }
+            });
+            drop_target.connect_drop(|drop_target, val, _, _| {
+                let port = drop_target
+                    .widget()
+                    .dynamic_cast::<super::Port>()
+                    .expect("Widget should be a Port");
+                let other_port = val
+                    .get::<super::Port>()
+                    .expect("Dropped value should be a Port");
+
+                // Do not accept a drop between imcompatible ports
+                if !port.is_linkable_to(&other_port) {
+                    log::warn!("Tried to link incompatible ports");
+                    return false;
+                }
+
+                let (output_port, input_port) = match port.direction() {
+                    Direction::Output => (&port, &other_port),
+                    Direction::Input => (&other_port, &port),
+                };
+
+                port.emit_by_name::<()>(
+                    "port-toggled",
+                    &[&output_port.pipewire_id(), &input_port.pipewire_id()],
+                );
+
+                true
+            });
+            obj.add_controller(drop_target);
+        }
+    }
 }
 
 glib::wrapper! {
@@ -135,74 +214,6 @@ impl Port {
         imp.direction
             .set(direction)
             .expect("Port direction already set");
-
-        // Add a drag source and drop target controller with the type depending on direction,
-        // they will be responsible for link creation by dragging an output port onto an input port or the other way around.
-
-        // FIXME: We should protect against different media types, e.g. it should not be possible to drop a video port on an audio port.
-
-        // The port will simply provide its pipewire id to the drag target.
-        let drag_src = gtk::DragSource::builder()
-            .content(&gdk::ContentProvider::for_value(&match direction {
-                Direction::Input => ReversedLink(id).to_value(),
-                Direction::Output => ForwardLink(id).to_value(),
-            }))
-            .build();
-        drag_src.connect_drag_begin(clone!(@weak res as obj => move |source, _| {
-            trace!("Drag started from port {}", id);
-            let paintable = gtk::WidgetPaintable::new(Some(&obj));
-            source.set_icon(Some(&paintable), 0, 0);
-        }));
-        drag_src.connect_drag_cancel(move |_, _, _| {
-            trace!("Drag from port {} was cancelled", id);
-            false
-        });
-        res.add_controller(drag_src);
-
-        // The drop target will accept either a `ForwardLink` or `ReversedLink` depending in its own direction,
-        // and use it to emit its `port-toggled` signal.
-        let drop_target = gtk::DropTarget::new(
-            match direction {
-                Direction::Input => ForwardLink::static_type(),
-                Direction::Output => ReversedLink::static_type(),
-            },
-            gdk::DragAction::COPY,
-        );
-        match direction {
-            Direction::Input => {
-                drop_target.connect_drop(
-                    clone!(@weak res as this => @default-panic, move |drop_target, val, _, _| {
-                        if let Ok(ForwardLink(source_id)) = val.get::<ForwardLink>() {
-                            // Get the callback registered in the widget and call it
-                            drop_target
-                                .widget()
-                                .emit_by_name::<()>("port-toggled", &[&source_id, &this.pipewire_id()]);
-                        } else {
-                            warn!("Invalid type dropped on ingoing port");
-                        }
-
-                        true
-                    }),
-                );
-            }
-            Direction::Output => {
-                drop_target.connect_drop(
-                    clone!(@weak res as this => @default-panic, move |drop_target, val, _, _| {
-                        if let Ok(ReversedLink(target_id)) = val.get::<ReversedLink>() {
-                            // Get the callback registered in the widget and call it
-                            drop_target
-                                .widget()
-                                .emit_by_name::<()>("port-toggled", &[&this.pipewire_id(), &target_id]);
-                        } else {
-                            warn!("Invalid type dropped on outgoing port");
-                        }
-
-                        true
-                    }),
-                );
-            }
-        }
-        res.add_controller(drop_target);
 
         // Display a grab cursor when the mouse is over the port so the user knows it can be dragged to another port.
         res.set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
@@ -239,5 +250,9 @@ impl Port {
             },
             self.height() as f32 / 2.0,
         )
+    }
+
+    pub fn is_linkable_to(&self, other_port: &Self) -> bool {
+        self.direction() != other_port.direction()
     }
 }
