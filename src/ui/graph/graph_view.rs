@@ -15,9 +15,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use gtk::{
+    cairo, gio,
     glib::{self, clone},
-    graphene,
-    graphene::Point,
+    graphene::{self, Point},
     gsk,
     prelude::*,
     subclass::prelude::*,
@@ -43,6 +43,7 @@ mod imp {
     };
     use log::warn;
     use once_cell::sync::Lazy;
+    use pipewire::spa::Direction;
 
     pub struct DragState {
         node: glib::WeakRef<Node>,
@@ -53,20 +54,44 @@ mod imp {
         offset: Point,
     }
 
-    #[derive(Default)]
     pub struct GraphView {
         /// Stores nodes and their positions.
         pub(super) nodes: RefCell<HashMap<Node, Point>>,
-        /// Stores the link and whether it is currently active.
+        /// Stores the links and whether they are currently active.
         pub(super) links: RefCell<HashSet<Link>>,
+
+        // Properties for zooming and scrolling the hraph
         pub hadjustment: RefCell<Option<gtk::Adjustment>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
         pub zoom_factor: Cell<f64>,
+
         /// This keeps track of an ongoing node drag operation.
         pub dragged_node: RefCell<Option<DragState>>,
+
+        // These keep track of an ongoing port drag operation
+        pub dragged_port: glib::WeakRef<Port>,
+        pub port_drag_cursor: Cell<Point>,
+
         // Memorized data for an in-progress zoom gesture
         pub zoom_gesture_initial_zoom: Cell<Option<f64>>,
         pub zoom_gesture_anchor: Cell<Option<(f64, f64)>>,
+    }
+
+    impl Default for GraphView {
+        fn default() -> Self {
+            Self {
+                nodes: Default::default(),
+                links: Default::default(),
+                hadjustment: Default::default(),
+                vadjustment: Default::default(),
+                zoom_factor: Default::default(),
+                dragged_node: Default::default(),
+                dragged_port: Default::default(),
+                port_drag_cursor: Cell::new(Point::new(0.0, 0.0)),
+                zoom_gesture_initial_zoom: Default::default(),
+                zoom_gesture_anchor: Default::default(),
+            }
+        }
     }
 
     #[glib::object_subclass]
@@ -88,6 +113,7 @@ mod imp {
             self.obj().set_overflow(gtk::Overflow::Hidden);
 
             self.setup_node_dragging();
+            self.setup_port_drag_and_drop();
             self.setup_scroll_zooming();
             self.setup_zoom_gesture();
         }
@@ -289,6 +315,78 @@ mod imp {
             self.obj().add_controller(drag_controller);
         }
 
+        fn setup_port_drag_and_drop(&self) {
+            let controller = gtk::DropControllerMotion::new();
+
+            controller.connect_enter(|controller, x, y| {
+                let graph = controller
+                    .widget()
+                    .downcast::<super::GraphView>()
+                    .expect("Widget should be a graphview");
+
+                graph.imp().port_drag_enter(controller, x, y)
+            });
+
+            controller.connect_motion(|controller, x, y| {
+                let graph = controller
+                    .widget()
+                    .downcast::<super::GraphView>()
+                    .expect("Widget should be a graphview");
+
+                graph.imp().port_drag_motion(x, y)
+            });
+
+            controller.connect_leave(|controller| {
+                let graph = controller
+                    .widget()
+                    .downcast::<super::GraphView>()
+                    .expect("Widget should be a graphview");
+
+                graph.imp().port_drag_leave()
+            });
+
+            self.obj().add_controller(controller);
+        }
+
+        fn port_drag_enter(&self, controller: &gtk::DropControllerMotion, x: f64, y: f64) {
+            let Some(drop) = controller.drop() else {
+                return;
+            };
+
+            self.port_drag_cursor.set(Point::new(x as f32, y as f32));
+
+            drop.read_value_async(
+                Port::static_type(),
+                glib::PRIORITY_DEFAULT,
+                Option::<&gio::Cancellable>::None,
+                clone!(@weak self as imp => move|value| {
+                    let Ok(value) = value else {
+                        return;
+                    };
+                    let port: &Port = value.get().expect("Value should contain a port");
+
+                    imp.dragged_port.set(Some(port));
+                }),
+            );
+
+            self.obj().queue_draw();
+        }
+
+        fn port_drag_motion(&self, x: f64, y: f64) {
+            if self.dragged_port.upgrade().is_some() {
+                self.port_drag_cursor.set(Point::new(x as f32, y as f32));
+
+                self.obj().queue_draw();
+            }
+        }
+
+        fn port_drag_leave(&self) {
+            if self.dragged_port.upgrade().is_some() {
+                self.dragged_port.set(None);
+                self.obj().queue_draw();
+            }
+        }
+
         fn setup_scroll_zooming(&self) {
             // We're only interested in the vertical axis, but for devices like touchpads,
             // not capturing a small accidental horizontal move may cause the scroll to be disrupted if a widget
@@ -406,6 +504,83 @@ mod imp {
             snapshot.pop();
         }
 
+        fn draw_link(
+            &self,
+            link_cr: &cairo::Context,
+            output_anchor: &Point,
+            input_anchor: &Point,
+            active: bool,
+        ) {
+            let output_x: f64 = output_anchor.x().into();
+            let output_y: f64 = output_anchor.y().into();
+            let input_x: f64 = input_anchor.x().into();
+            let input_y: f64 = input_anchor.y().into();
+
+            // Use dashed line for inactive links, full line otherwise.
+            if active {
+                link_cr.set_dash(&[], 0.0);
+            } else {
+                link_cr.set_dash(&[10.0, 5.0], 0.0);
+            }
+
+            // If the output port is farther right than the input port and they have
+            // a similar y coordinate, apply a y offset to the control points
+            // so that the curve sticks out a bit.
+            let y_control_offset = if output_x > input_x {
+                f64::max(0.0, 25.0 - (output_y - input_y).abs())
+            } else {
+                0.0
+            };
+
+            // Place curve control offset by half the x distance between the two points.
+            // This makes the curve scale well for varying distances between the two ports,
+            // especially when the output port is farther right than the input port.
+            let half_x_dist = f64::abs(output_x - input_x) / 2.0;
+            link_cr.move_to(output_x, output_y);
+            link_cr.curve_to(
+                output_x + half_x_dist,
+                output_y - y_control_offset,
+                input_x - half_x_dist,
+                input_y - y_control_offset,
+                input_x,
+                input_y,
+            );
+
+            if let Err(e) = link_cr.stroke() {
+                warn!("Failed to draw graphview links: {}", e);
+            };
+        }
+
+        fn draw_dragged_link(&self, port: &Port, link_cr: &cairo::Context) {
+            let Some(port_anchor) = port.compute_point(&*self.obj(), &port.link_anchor()) else {
+                return;
+            };
+            let drag_cursor = self.port_drag_cursor.get();
+
+            /* If we can find a linkable port under the cursor, link to its anchor,
+             * otherwise link to the mouse cursor */
+            let picked_port = self
+                .obj()
+                .pick(
+                    drag_cursor.x().into(),
+                    drag_cursor.y().into(),
+                    gtk::PickFlags::DEFAULT,
+                )
+                .and_then(|widget| widget.ancestor(Port::static_type()).and_downcast::<Port>())
+                .filter(|picked_port| port.is_linkable_to(picked_port));
+            let picked_port_anchor = picked_port.and_then(|picked_port| {
+                picked_port.compute_point(&*self.obj(), &picked_port.link_anchor())
+            });
+            let other_anchor = picked_port_anchor.unwrap_or(drag_cursor);
+
+            let (output_anchor, input_anchor) = match port.direction() {
+                Direction::Output => (&port_anchor, &other_anchor),
+                Direction::Input => (&other_anchor, &port_anchor),
+            };
+
+            self.draw_link(link_cr, output_anchor, input_anchor, false);
+        }
+
         fn snapshot_links(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
             let alloc = widget.allocation();
 
@@ -437,44 +612,11 @@ mod imp {
                     continue;
                 };
 
-                let output_x: f64 = output_anchor.x().into();
-                let output_y: f64 = output_anchor.y().into();
-                let input_x: f64 = input_anchor.x().into();
-                let input_y: f64 = input_anchor.y().into();
+                self.draw_link(&link_cr, &output_anchor, &input_anchor, link.active());
+            }
 
-                // Use dashed line for inactive links, full line otherwise.
-                if link.active() {
-                    link_cr.set_dash(&[], 0.0);
-                } else {
-                    link_cr.set_dash(&[10.0, 5.0], 0.0);
-                }
-
-                // If the output port is farther right than the input port and they have
-                // a similar y coordinate, apply a y offset to the control points
-                // so that the curve sticks out a bit.
-                let y_control_offset = if output_x > input_x {
-                    f64::max(0.0, 25.0 - (output_y - input_y).abs())
-                } else {
-                    0.0
-                };
-
-                // Place curve control offset by half the x distance between the two points.
-                // This makes the curve scale well for varying distances between the two ports,
-                // especially when the output port is farther right than the input port.
-                let half_x_dist = f64::abs(output_x - input_x) / 2.0;
-                link_cr.move_to(output_x, output_y);
-                link_cr.curve_to(
-                    output_x + half_x_dist,
-                    output_y - y_control_offset,
-                    input_x - half_x_dist,
-                    input_y - y_control_offset,
-                    input_x,
-                    input_y,
-                );
-
-                if let Err(e) = link_cr.stroke() {
-                    warn!("Failed to draw graphview links: {}", e);
-                };
+            if let Some(port) = self.dragged_port.upgrade() {
+                self.draw_dragged_link(&port, &link_cr);
             }
         }
 

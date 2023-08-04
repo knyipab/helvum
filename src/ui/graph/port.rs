@@ -119,6 +119,9 @@ mod imp {
             let drag_src = gtk::DragSource::builder()
                 .content(&gdk::ContentProvider::for_value(&obj.to_value()))
                 .build();
+            // Override the default drag icon with an empty one so that only a grab cursor is shown.
+            // The graph will render a link from the source port to the cursor to visualize the drag instead.
+            drag_src.set_icon(Some(&gdk::Paintable::new_empty(0, 0)), 0, 0);
             drag_src.connect_drag_begin(|drag_source, _| {
                 let port = drag_source
                     .widget()
@@ -126,9 +129,6 @@ mod imp {
                     .expect("Widget should be a Port");
 
                 log::trace!("Drag started from port {}", port.pipewire_id());
-
-                let paintable = gtk::WidgetPaintable::new(Some(&port));
-                drag_source.set_icon(Some(&paintable), 0, 0);
             });
             drag_src.connect_drag_cancel(|drag_source, _, _| {
                 let port = drag_source
