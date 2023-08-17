@@ -63,6 +63,7 @@ mod imp {
         }
     }
 
+    #[glib::derived_properties]
     impl ObjectImpl for Port {
         fn constructed(&self) {
             self.parent_constructed();
@@ -78,18 +79,6 @@ mod imp {
 
         fn dispose(&self) {
             self.label.unparent()
-        }
-
-        fn properties() -> &'static [glib::ParamSpec] {
-            Self::derived_properties()
-        }
-
-        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            Self::derived_property(self, id, pspec)
-        }
-
-        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            Self::derived_set_property(self, id, value, pspec)
         }
 
         fn signals() -> &'static [Signal] {
@@ -182,6 +171,7 @@ mod imp {
                 let (output_port, input_port) = match port.direction() {
                     Direction::Output => (&port, &other_port),
                     Direction::Input => (&other_port, &port),
+                    _ => unreachable!(),
                 };
 
                 port.emit_by_name::<()>(
@@ -229,8 +219,9 @@ impl Port {
         res
     }
 
-    pub fn direction(&self) -> &Direction {
-        self.imp()
+    pub fn direction(&self) -> Direction {
+        *self
+            .imp()
             .direction
             .get()
             .expect("Port direction is not set")
@@ -247,6 +238,7 @@ impl Port {
             match self.direction() {
                 Direction::Output => self.width() as f32 + padding_right + border_right,
                 Direction::Input => 0.0 - padding_left - border_left,
+                _ => unreachable!(),
             },
             self.height() as f32 / 2.0,
         )

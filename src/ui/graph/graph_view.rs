@@ -357,7 +357,7 @@ mod imp {
 
             drop.read_value_async(
                 Port::static_type(),
-                glib::PRIORITY_DEFAULT,
+                glib::Priority::DEFAULT,
                 Option::<&gio::Cancellable>::None,
                 clone!(@weak self as imp => move|value| {
                     let Ok(value) = value else {
@@ -407,9 +407,9 @@ mod imp {
                         .unwrap();
                     widget.set_zoom_factor(widget.zoom_factor() + (0.1 * -delta_y), None);
 
-                    gtk::Inhibit(true)
+                    glib::Propagation::Stop
                 } else {
-                    gtk::Inhibit(false)
+                    glib::Propagation::Proceed
                 }
             });
             self.obj().add_controller(scroll_controller);
@@ -576,6 +576,7 @@ mod imp {
             let (output_anchor, input_anchor) = match port.direction() {
                 Direction::Output => (&port_anchor, &other_anchor),
                 Direction::Input => (&other_anchor, &port_anchor),
+                _ => unreachable!(),
             };
 
             self.draw_link(link_cr, output_anchor, input_anchor, false);

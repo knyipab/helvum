@@ -46,24 +46,13 @@ mod imp {
         type ParentType = glib::Object;
     }
 
-    impl ObjectImpl for GraphManager {
-        fn properties() -> &'static [glib::ParamSpec] {
-            Self::derived_properties()
-        }
-
-        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            Self::derived_property(self, id, pspec)
-        }
-
-        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            Self::derived_set_property(self, id, value, pspec)
-        }
-    }
+    #[glib::derived_properties]
+    impl ObjectImpl for GraphManager {}
 
     impl GraphManager {
         pub fn attach_receiver(&self, receiver: glib::Receiver<crate::PipewireMessage>) {
             receiver.attach(None, glib::clone!(
-                @weak self as imp => @default-return Continue(true),
+                @weak self as imp => @default-return glib::ControlFlow::Continue,
                 move |msg| {
                     match msg {
                         PipewireMessage::NodeAdded{ id, name, node_type } => imp.add_node(id, name.as_str(), node_type),
@@ -74,7 +63,7 @@ mod imp {
                         PipewireMessage::PortRemoved { id, node_id } => imp.remove_port(id, node_id),
                         PipewireMessage::LinkRemoved { id } => imp.remove_link(id)
                     };
-                    Continue(true)
+                    glib::ControlFlow::Continue
                 }
             ));
         }

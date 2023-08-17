@@ -19,7 +19,6 @@ mod graph_manager;
 mod pipewire_connection;
 mod ui;
 
-use glib::PRIORITY_DEFAULT;
 use gtk::prelude::*;
 use pipewire::spa::Direction;
 
@@ -111,7 +110,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _guard = ctx.acquire().unwrap();
 
     // Start the pipewire thread with channels in both directions.
-    let (gtk_sender, gtk_receiver) = glib::MainContext::channel(PRIORITY_DEFAULT);
+
+    let (gtk_sender, gtk_receiver) = glib::MainContext::channel(glib::Priority::DEFAULT);
     let (pw_sender, pw_receiver) = pipewire::channel::channel();
     let pw_thread =
         std::thread::spawn(move || pipewire_connection::thread_main(gtk_sender, pw_receiver));
