@@ -122,6 +122,7 @@ checksum = "c688fc74432808e3eb684cae8830a86be1d66a2bd58e1f248ed0960a590baf6f"
 dependencies = [
  "glob",
  "libc",
+ "libloading",
 ]
 
 [[package]]
@@ -533,10 +534,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4668fb0ea861c1df094127ac5f1da3409a82116a4ba74fca2e58ef927159bb3"
 
 [[package]]
-name = "libspa"
-version = "0.7.0"
+name = "libloading"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86675feca9b040cd26cc97c41f6af3c6875d6c3f22dd80f15e6a30fa439fa72c"
+checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
+dependencies = [
+ "cfg-if",
+ "winapi",
+]
+
+[[package]]
+name = "libspa"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcdea6b6663acf456641a4dea1b87fa6970a3e881596237713192d8f5423b542"
 dependencies = [
  "bitflags 2.4.0",
  "cc",
@@ -551,9 +562,9 @@ dependencies = [
 
 [[package]]
 name = "libspa-sys"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36edb2771327e3908cdcccbea7c20a7285179ba0322a34621d494cb5a9ca979f"
+checksum = "e63fc701d3375e6e255765d6a6172d9af06583115e78f3dfe2c8ff1dfd0b2dab"
 dependencies = [
  "bindgen",
  "cc",
@@ -671,9 +682,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pipewire"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73b9de7cc82b710b1453f630999a1d2a473718e6056762900c0b009309aba4f9"
+checksum = "062c97c31818918b8bffdc66cfd93f3e4b4141f505c63234f9ff0a658fddedab"
 dependencies = [
  "anyhow",
  "bitflags 2.4.0",
@@ -688,9 +699,9 @@ dependencies = [
 
 [[package]]
 name = "pipewire-sys"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d66790b3815389bf04ce54f3972809183364795a0a9e8bc979932d918d9f1405"
+checksum = "d558e2cffe5f97ac32c7e0b6cb6074b5271b8c2c628ac68633342ee08fdab308"
 dependencies = [
  "bindgen",
  "libspa-sys",
