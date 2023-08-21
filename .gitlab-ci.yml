@@ -1,75 +1,53 @@
-include:
-  - project: 'freedesktop/ci-templates'             # the project to include from
-    ref: '34f4ade99434043f88e164933f570301fd18b125' # git ref of that project
-    file: '/templates/fedora.yml'                   # the actual file to include
-
 stages:
-  - prepare
+  - build
   - lint
-  - test
-  - extras
 
-variables:
-  FDO_UPSTREAM_REPO: 'pipewire/helvum'
-
-# Version and tag for our current container
-.fedora:
+.flatpak:
+  image: 'quay.io/gnome_infrastructure/gnome-runtime-images:gnome-44@sha256:c8da8f160a9c536c60a160964bddaa6472add3f3f41d32764d2f21afff74146b'
   variables:
-    FDO_DISTRIBUTION_VERSION: '38'
-    # Update this to trigger a container rebuild
-    FDO_DISTRIBUTION_TAG: '2023-08-17.0'
+    FLATPAK_BUILD_DIR: _build
+    MANIFEST_PATH: build-aux/org.pipewire.Helvum.json
+    APP_FLATPAK_MODULE: Helvum
+  before_script:
+    - flatpak --version
+    - flatpak info org.gnome.Platform
+    - flatpak info org.gnome.Sdk
+    - flatpak info org.freedesktop.Sdk.Extension.llvm15
+    - flatpak info org.freedesktop.Sdk.Extension.rust-stable
+    - flatpak-builder --version
 
-build-fedora-container:
-  extends:
-  - .fedora                            # our template job above
-  - .fdo.container-build@fedora@x86_64 # the CI template
-  stage: prepare
-  variables:
-    # clang-devel: required by rust bindgen
-    FDO_DISTRIBUTION_PACKAGES: >-
-      rust
-      cargo
-      rustfmt
-      clippy
-      pipewire-devel
-      gtk4-devel
-      clang-devel
-
-rustfmt:
-  extends:
-    - .fedora
-    - .fdo.distribution-image@fedora
-  stage: lint
+build:
+  stage: build
+  extends: .flatpak
   script:
-    - cargo fmt --version
-    - cargo fmt -- --color=always --check
+    - flatpak-builder --keep-build-dirs --user --disable-rofiles-fuse ${FLATPAK_BUILD_DIR} ${MANIFEST_PATH}
 
-test-stable:
-  extends:
-    - .fedora
-    - .fdo.distribution-image@fedora
-  stage: test
-  script:
-    - rustc --version
-    - cargo build --color=always --all-targets
-    - cargo test --color=always
-
-rustdoc:
-  extends:
-    - .fedora
-    - .fdo.distribution-image@fedora
-  stage: extras
-  variables:
-    RUSTDOCFLAGS: '-Dwarnings'
-  script:
-    - rustdoc --version
-    - cargo doc --no-deps
+# TODO: Run meson test
 
 clippy:
-  extends:
-    - .fedora
-    - .fdo.distribution-image@fedora
-  stage: extras
+  stage: lint
+  extends: .flatpak
   script:
-    - cargo clippy --version
-    - cargo clippy --color=always --all-targets -- -D warnings
+    - flatpak-builder --keep-build-dirs --user --disable-rofiles-fuse --stop-at=${APP_FLATPAK_MODULE} ${FLATPAK_BUILD_DIR} ${MANIFEST_PATH}
+    - >-
+      flatpak-builder --run ${FLATPAK_BUILD_DIR} ${MANIFEST_PATH}
+      cargo clippy --color=always --all-targets -- -D warnings
+
+rustfmt:
+  stage: lint
+  image: "rust:slim" # TODO: Check image
+  script:
+    - rustup component add rustfmt
+    - rustc -Vv && cargo -Vv
+    - cargo fmt --version
+    - cargo fmt --all -- --color=always --check
+
+rustdoc:
+  stage: lint
+  extends: .flatpak
+  script:
+    - flatpak-builder --keep-build-dirs --user --disable-rofiles-fuse --stop-at=${APP_FLATPAK_MODULE} ${FLATPAK_BUILD_DIR} ${MANIFEST_PATH}
+    - >-
+      flatpak-builder --run ${FLATPAK_BUILD_DIR} ${MANIFEST_PATH}
+      env RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps
+
