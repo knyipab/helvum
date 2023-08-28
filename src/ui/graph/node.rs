@@ -44,10 +44,10 @@ mod imp {
         #[template_child]
         pub(super) label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub(super) separator: TemplateChild<gtk::Separator>,
+        #[template_child]
         pub(super) port_grid: TemplateChild<gtk::Grid>,
         pub(super) ports: RefCell<HashSet<Port>>,
-        pub(super) num_ports_in: Cell<i32>,
-        pub(super) num_ports_out: Cell<i32>,
     }
 
     #[glib::object_subclass]
@@ -85,6 +85,50 @@ mod imp {
     }
 
     impl WidgetImpl for Node {}
+
+    impl Node {
+        /// Update the internal ports grid to reflect the ports stored in the ports set.
+        pub fn update_ports(&self) {
+            // We first remove all ports from the grid, then re-add them all, so that
+            // ports that have been removed do not leave gaps in the grid.
+
+            while let Some(ref child) = self.port_grid.first_child() {
+                self.port_grid.remove(child);
+            }
+
+            let ports = self.ports.borrow();
+
+            let mut ports_out = Vec::new();
+            let mut ports_in = Vec::new();
+
+            ports
+                .iter()
+                .for_each(|port| match Direction::from_raw(port.direction()) {
+                    Direction::Output => {
+                        ports_out.push(port);
+                    }
+                    Direction::Input => {
+                        ports_in.push(port);
+                    }
+                    _ => unreachable!(),
+                });
+
+            ports_out.sort_unstable_by_key(|port| port.name());
+            ports_in.sort_unstable_by_key(|port| port.name());
+
+            // In case no ports have been added to the port, hide the seperator as it is not needed
+            self.separator
+                .set_visible(!ports_out.is_empty() || !ports_in.is_empty());
+
+            for (i, port) in ports_in.into_iter().enumerate() {
+                self.port_grid.attach(port, 0, i.try_into().unwrap(), 1, 1);
+            }
+
+            for (i, port) in ports_out.into_iter().enumerate() {
+                self.port_grid.attach(port, 1, i.try_into().unwrap(), 1, 1);
+            }
+        }
+    }
 }
 
 glib::wrapper! {
@@ -102,34 +146,14 @@ impl Node {
 
     pub fn add_port(&self, port: Port) {
         let imp = self.imp();
-
-        match Direction::from_raw(port.direction()) {
-            Direction::Input => {
-                imp.port_grid
-                    .attach(&port, 0, imp.num_ports_in.get() + 1, 1, 1);
-                imp.num_ports_in.set(imp.num_ports_in.get() + 1);
-            }
-            Direction::Output => {
-                imp.port_grid
-                    .attach(&port, 1, imp.num_ports_out.get() + 1, 1, 1);
-                imp.num_ports_out.set(imp.num_ports_out.get() + 1);
-            }
-            _ => unreachable!(),
-        }
-
         imp.ports.borrow_mut().insert(port);
+        imp.update_ports();
     }
 
     pub fn remove_port(&self, port: &Port) {
         let imp = self.imp();
         if imp.ports.borrow_mut().remove(port) {
-            match Direction::from_raw(port.direction()) {
-                Direction::Input => imp.num_ports_in.set(imp.num_ports_in.get() - 1),
-                Direction::Output => imp.num_ports_in.set(imp.num_ports_out.get() - 1),
-                _ => unreachable!(),
-            }
-
-            port.unparent();
+            imp.update_ports();
         } else {
             log::warn!("Tried to remove non-existant port widget from node");
         }

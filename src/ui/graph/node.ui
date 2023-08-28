@@ -20,7 +20,10 @@
           </object>
         </child>
         <child>
-          <object class="GtkSeparator"></object>
+          <object class="GtkSeparator" id="separator">
+            <!-- The node will show the seperator only once ports are added to it -->
+            <property name="visible">false</property>
+          </object>
         </child>
         <child>
           <object class="GtkGrid" id="port_grid">
