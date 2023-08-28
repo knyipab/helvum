@@ -42,7 +42,7 @@ For compilation, you will need:
 - Meson
 - An up-to-date rust toolchain
 - `libclang-3.7` or higher
-- `gtk-4.0` and `pipewire-0.3` development headers
+- `libadwaita-1` and `libpipewire-0.3` development packages and their dependencies
 
 To compile and install, run
 
