@@ -39,9 +39,12 @@ graphview {
     background-color: @view_bg_color;
 }
 
-port {
-    padding-top: 3px;
-    padding-bottom: 3px;
+node label.heading {
+	padding: 4px;
+}
+
+port label {
+    padding: 3px;
 }
 
 port-handle {

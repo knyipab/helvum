@@ -60,6 +60,8 @@ mod imp {
             klass.set_layout_manager_type::<gtk::BoxLayout>();
 
             klass.bind_template();
+
+            klass.set_css_name("node");
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
