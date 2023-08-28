@@ -69,6 +69,10 @@ mod imp {
         fn startup(&self) {
             self.parent_startup();
 
+            self.obj()
+                .style_manager()
+                .set_color_scheme(adw::ColorScheme::PreferDark);
+
             // Load CSS from the STYLE variable.
             let provider = gtk::CssProvider::new();
             provider.load_from_data(STYLE);
