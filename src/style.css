@@ -35,8 +35,10 @@
     color: black;
 }
 
-graphview {
-    background-color: @view_bg_color;
+node {
+    /* Compared to the default card color, this is not transparent in dark-mode
+       and provides a better contrast to the background in light mode */
+	background-color: @headerbar_bg_color;
 }
 
 node label.heading {

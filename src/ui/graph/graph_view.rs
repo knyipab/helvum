@@ -128,6 +128,8 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
+            self.obj().add_css_class("view");
+
             self.obj().set_overflow(gtk::Overflow::Hidden);
 
             self.setup_node_dragging();
