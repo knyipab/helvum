@@ -74,6 +74,7 @@ pub enum PipewireMessage {
     LinkRemoved {
         id: u32,
     },
+    Disconnected,
 }
 
 #[derive(Debug, Clone)]

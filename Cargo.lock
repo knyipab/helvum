@@ -500,6 +500,7 @@ version = "0.4.1"
 dependencies = [
  "glib",
  "libadwaita",
+ "libc",
  "log",
  "once_cell",
  "pipewire",

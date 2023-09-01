@@ -796,6 +796,14 @@ impl GraphView {
         self.queue_draw();
     }
 
+    pub fn clear(&mut self) {
+        self.imp().links.borrow_mut().clear();
+        for (node, _) in self.imp().nodes.borrow_mut().drain() {
+            node.unparent();
+        }
+        self.queue_draw();
+    }
+
     /// Get the position of the specified node inside the graphview.
     ///
     /// The returned position is in canvas-space (non-zoomed, (0, 0) fixed in the middle of the canvas).

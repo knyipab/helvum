@@ -65,7 +65,8 @@ mod imp {
                         PipewireMessage::LinkFormatChanged { id, media_type } => imp.link_format_changed(id, media_type),
                         PipewireMessage::NodeRemoved { id } => imp.remove_node(id),
                         PipewireMessage::PortRemoved { id, node_id } => imp.remove_port(id, node_id),
-                        PipewireMessage::LinkRemoved { id } => imp.remove_link(id)
+                        PipewireMessage::LinkRemoved { id } => imp.remove_link(id),
+                        PipewireMessage::Disconnected => imp.clear(),
                     };
                     glib::ControlFlow::Continue
                 }
@@ -279,6 +280,11 @@ mod imp {
             };
 
             self.obj().graph().remove_link(&link);
+        }
+
+        fn clear(&self) {
+            self.items.borrow_mut().clear();
+            self.obj().graph().clear();
         }
     }
 }
