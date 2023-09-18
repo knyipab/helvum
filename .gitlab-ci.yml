@@ -3,7 +3,7 @@ stages:
   - lint
 
 .flatpak:
-  image: 'quay.io/gnome_infrastructure/gnome-runtime-images:gnome-44@sha256:c8da8f160a9c536c60a160964bddaa6472add3f3f41d32764d2f21afff74146b'
+  image: 'quay.io/gnome_infrastructure/gnome-runtime-images:gnome-44@sha256:681191574acbc6785059fab4bfdb5541379d746c98426b5b73caf243a8c110ad'
   variables:
     FLATPAK_BUILD_DIR: _build
     MANIFEST_PATH: build-aux/org.pipewire.Helvum.json
