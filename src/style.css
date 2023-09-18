@@ -42,11 +42,11 @@ node {
 }
 
 node label.heading {
-	padding: 4px;
+	padding: 4px 7px;
 }
 
 port label {
-    padding: 3px;
+    padding: 4px 6px;
 }
 
 port-handle {

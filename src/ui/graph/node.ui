@@ -26,9 +26,7 @@
           </object>
         </child>
         <child>
-          <object class="GtkGrid" id="port_grid">
-            <property name="column-spacing">10</property>
-          </object>
+          <object class="GtkGrid" id="port_grid"></object>
         </child>
       </object>
     </child>
