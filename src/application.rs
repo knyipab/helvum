@@ -26,6 +26,9 @@ use pipewire::channel::Sender;
 use crate::{graph_manager::GraphManager, ui, GtkMessage, PipewireMessage};
 
 static STYLE: &str = include_str!("style.css");
+static APP_ID: &str = "org.pipewire.Helvum";
+static VERSION: &str = env!("CARGO_PKG_VERSION");
+static AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 
 mod imp {
     use super::*;
@@ -81,10 +84,50 @@ mod imp {
                 &provider,
                 gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
             );
+
+            self.setup_actions();
         }
     }
     impl GtkApplicationImpl for Application {}
     impl AdwApplicationImpl for Application {}
+
+    impl Application {
+        fn setup_actions(&self) {
+            let obj = &*self.obj();
+
+            // Add <Control-Q> shortcut for quitting the application.
+            let quit = gtk::gio::SimpleAction::new("quit", None);
+            quit.connect_activate(clone!(@weak obj => move |_, _| {
+                obj.quit();
+            }));
+            obj.set_accels_for_action("app.quit", &["<Control>Q"]);
+            obj.add_action(&quit);
+
+            let action_about = gio::ActionEntry::builder("about")
+                .activate(|obj: &super::Application, _, _| {
+                    obj.imp().show_about_dialog();
+                })
+                .build();
+            obj.add_action_entries([action_about]);
+        }
+
+        fn show_about_dialog(&self) {
+            let authors: Vec<&str> = AUTHORS.split(':').collect();
+
+            let about_window = adw::AboutWindow::builder()
+                .application_icon(APP_ID)
+                .application_name("Helvum")
+                .developer_name("Tom Wagner")
+                .developers(authors)
+                .version(VERSION)
+                .website("https://gitlab.freedesktop.org/pipewire/helvum")
+                .issue_url("https://gitlab.freedesktop.org/pipewire/helvum/-/issues")
+                .license_type(gtk::License::Gpl30Only)
+                .build();
+
+            about_window.present();
+        }
+    }
 }
 
 glib::wrapper! {
@@ -101,7 +144,7 @@ impl Application {
         pw_sender: Sender<GtkMessage>,
     ) -> Self {
         let app: Application = glib::Object::builder()
-            .property("application-id", "org.pipewire.Helvum")
+            .property("application-id", APP_ID)
             .build();
 
         let imp = app.imp();
@@ -113,14 +156,6 @@ impl Application {
                 gtk_receiver,
             ))
             .expect("Should be able to set graph manager");
-
-        // Add <Control-Q> shortcut for quitting the application.
-        let quit = gtk::gio::SimpleAction::new("quit", None);
-        quit.connect_activate(clone!(@weak app => move |_, _| {
-            app.quit();
-        }));
-        app.set_accels_for_action("app.quit", &["<Control>Q"]);
-        app.add_action(&quit);
 
         app
     }

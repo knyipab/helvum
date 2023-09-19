@@ -1,7 +1,7 @@
 [package]
 name = "helvum"
 version = "0.4.1"
-authors = ["Tom A. Wagner <tom.a.wagner@protonmail.com>"]
+authors = ["Tom Wagner <tom.a.wagner@protonmail.com>"]
 edition = "2021"
 rust-version = "1.70"
 license = "GPL-3.0-only"
@@ -15,7 +15,7 @@ categories = ["gui", "multimedia"]
 
 [dependencies]
 pipewire = "0.7.1"
-adw = { version = "0.5", package = "libadwaita" }
+adw = { version = "0.5", package = "libadwaita", features = ["v1_2"] }
 glib = { version = "0.18", features = ["log"] }
 
 log = "0.4.11"
