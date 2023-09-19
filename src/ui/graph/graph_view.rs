@@ -288,7 +288,9 @@ mod imp {
                     // Drag the Node around the screen.
                     let node = target.dynamic_cast_ref::<Node>().unwrap();
 
-                    let Some(canvas_node_pos) = widget.node_position(node) else { return };
+                    let Some(canvas_node_pos) = widget.node_position(node) else {
+                        return;
+                    };
                     let canvas_cursor_pos = widget
                         .imp()
                         .screen_space_to_canvas_space_transform()
@@ -311,7 +313,9 @@ mod imp {
                     .dynamic_cast::<super::GraphView>()
                     .expect("drag-update event is not on the GraphView");
                 let dragged_node = widget.imp().dragged_node.borrow();
-                let Some(DragState { node, offset }) = dragged_node.as_ref() else { return };
+                let Some(DragState { node, offset }) = dragged_node.as_ref() else {
+                    return;
+                };
                 let Some(node) = node.upgrade() else { return };
 
                 let (start_x, start_y) = drag_controller
