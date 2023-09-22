@@ -23,7 +23,7 @@ $ flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.fl
 
 Then install the required flatpak platform and SDK, if you dont have them already:
 ```shell
-$ flatpak install org.gnome.{Platform,Sdk}//44 org.freedesktop.Sdk.Extension.rust-stable//22.08 org.freedesktop.Sdk.Extension.llvm15//22.08
+$ flatpak install org.gnome.{Platform,Sdk}//45 org.freedesktop.Sdk.Extension.rust-stable//23.08 org.freedesktop.Sdk.Extension.llvm16//23.08
 ```
 
 To compile and install as a flatpak, clone the project, change to the project directory, and run:
