@@ -3,7 +3,7 @@ stages:
   - lint
 
 .flatpak:
-  image: 'quay.io/gnome_infrastructure/gnome-runtime-images:gnome-44@sha256:681191574acbc6785059fab4bfdb5541379d746c98426b5b73caf243a8c110ad'
+  image: 'quay.io/gnome_infrastructure/gnome-runtime-images:gnome-45'
   variables:
     FLATPAK_BUILD_DIR: _build
     MANIFEST_PATH: build-aux/org.pipewire.Helvum.json
@@ -12,7 +12,7 @@ stages:
     - flatpak --version
     - flatpak info org.gnome.Platform
     - flatpak info org.gnome.Sdk
-    - flatpak info org.freedesktop.Sdk.Extension.llvm15
+    - flatpak info org.freedesktop.Sdk.Extension.llvm16
     - flatpak info org.freedesktop.Sdk.Extension.rust-stable
     - flatpak-builder --version
 
