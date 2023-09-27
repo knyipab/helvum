@@ -67,23 +67,14 @@ pub(super) fn thread_main(
         let core = match context.connect(None) {
             Ok(core) => Rc::new(core),
             Err(_) => {
-                // If connection is failed, try to connect every 200ms
+                // If connection is failed, try to connect again in 200ms
                 let interval = Some(Duration::from_millis(200));
 
-                let core = Rc::new(RefCell::new(None));
-                let timer = mainloop.add_timer(
-                    clone!(@strong mainloop, @strong context, @strong core => move |_| {
-                        if let Ok(x) = context.connect(None) {
-                            core.replace(Some(x));
-                            mainloop.quit();
-                        }
-                    }),
-                );
+                let timer = mainloop.add_timer(clone!(@strong mainloop => move |_| {
+                    mainloop.quit();
+                }));
 
-                timer
-                    .update_timer(interval, interval)
-                    .into_result()
-                    .unwrap();
+                timer.update_timer(interval, None).into_result().unwrap();
 
                 let receiver = pw_receiver.attach(&mainloop, {
                     clone!(@strong mainloop, @strong is_stopped => move |msg|
@@ -98,11 +89,7 @@ pub(super) fn thread_main(
                 mainloop.run();
                 pw_receiver = receiver.deattach();
 
-                if is_stopped.get() {
-                    break;
-                }
-
-                Rc::new(core.take().unwrap())
+                continue;
             }
         };
 
