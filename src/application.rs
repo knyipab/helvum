@@ -21,6 +21,7 @@ use adw::{
     prelude::*,
     subclass::prelude::*,
 };
+use log::error;
 use pipewire::channel::Sender;
 
 use crate::{graph_manager::GraphManager, ui, GtkMessage, PipewireMessage};
@@ -131,6 +132,27 @@ mod imp {
 
             about_window.present();
         }
+
+        pub(super) fn setup_options(&self, pw_sender: Sender<GtkMessage>) {
+            let obj = &*self.obj();
+
+            obj.add_main_option(
+                "socket",
+                glib::char::Char::from(b's'),
+                glib::OptionFlags::NONE,
+                glib::OptionArg::String,
+                "PipeWire socket to connect",
+                Some("PATH"),
+            );
+
+            obj.connect_handle_local_options(clone!(@strong pw_sender => move |_, opts| {
+                match opts.lookup::<String>("socket") {
+                    Ok(p) => pw_sender.send(GtkMessage::Connect(p)).unwrap(),
+                    Err(e) => error!("Invalid socket path: {e}"),
+                }
+                -1
+            }));
+        }
     }
 }
 
@@ -152,6 +174,8 @@ impl Application {
             .build();
 
         let imp = app.imp();
+
+        imp.setup_options(pw_sender.clone());
 
         imp.graph_manager
             .set(GraphManager::new(

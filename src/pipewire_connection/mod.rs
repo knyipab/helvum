@@ -16,12 +16,7 @@
 
 mod state;
 
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
 
 use adw::glib::{self, clone};
 use log::{debug, error, info, warn};
@@ -33,7 +28,7 @@ use pipewire::{
     main_loop::MainLoop,
     node::{Node, NodeInfoRef, NodeListener},
     port::{Port, PortChangeMask, PortInfoRef, PortListener},
-    properties::properties,
+    properties::{properties, Properties},
     registry::{GlobalObject, Registry},
     spa::{
         param::{ParamInfoFlags, ParamType},
@@ -61,6 +56,25 @@ enum ProxyItem {
     },
 }
 
+struct LoopState {
+    is_stopped: bool,
+    props: Properties,
+}
+
+impl LoopState {
+    fn handle_message(&mut self, msg: GtkMessage) -> bool {
+        match msg {
+            GtkMessage::Terminate => self.is_stopped = true,
+            GtkMessage::Connect(remote) => match remote {
+                Some(s) => self.props.insert(*keys::REMOTE_NAME, s),
+                None => self.props.remove(*keys::REMOTE_NAME),
+            },
+            _ => return false,
+        }
+        true
+    }
+}
+
 /// The "main" function of the pipewire thread.
 pub(super) fn thread_main(
     gtk_sender: async_channel::Sender<PipewireMessage>,
@@ -68,14 +82,29 @@ pub(super) fn thread_main(
 ) {
     let mainloop = MainLoop::new(None).expect("Failed to create mainloop");
     let context = Rc::new(Context::new(&mainloop).expect("Failed to create context"));
-    let is_stopped = Rc::new(Cell::new(false));
+    let loop_state = Rc::new(RefCell::new(LoopState {
+        is_stopped: false,
+        props: properties! {
+            "media.category" => "Manager",
+        },
+    }));
     let mut is_connecting = false;
 
-    while !is_stopped.get() {
+    // Wait PipeWire service to connect from command line arguments.
+    let receiver = pw_receiver.attach(mainloop.loop_(), {
+        clone!(@strong mainloop, @strong loop_state => move |msg|
+            if loop_state.borrow_mut().handle_message(msg) {
+                mainloop.quit();
+            }
+        )
+    });
+    mainloop.run();
+    pw_receiver = receiver.deattach();
+
+    while !loop_state.borrow().is_stopped {
         // Try to connect
-        let core = match context.connect(Some(properties! {
-            "media.category" => "Manager"
-        })) {
+        let props = loop_state.borrow().props.clone();
+        let core = match context.connect(Some(props)) {
             Ok(core) => Rc::new(core),
             Err(_) => {
                 if !is_connecting {
@@ -97,10 +126,8 @@ pub(super) fn thread_main(
                 timer.update_timer(interval, None).into_result().unwrap();
 
                 let receiver = pw_receiver.attach(mainloop.loop_(), {
-                    clone!(@strong mainloop, @strong is_stopped => move |msg|
-                        if let GtkMessage::Terminate = msg {
-                            // main thread requested stop
-                            is_stopped.set(true);
+                    clone!(@strong mainloop, @strong loop_state => move |msg|
+                        if loop_state.borrow_mut().handle_message(msg) {
                             mainloop.quit();
                         }
                     )
@@ -127,32 +154,33 @@ pub(super) fn thread_main(
         let state = Rc::new(RefCell::new(State::new()));
 
         let receiver = pw_receiver.attach(mainloop.loop_(), {
-            clone!(@strong mainloop, @weak core, @weak registry, @strong state, @strong is_stopped => move |msg| match msg {
+            clone!(@strong mainloop, @weak core, @weak registry, @strong state, @strong loop_state => move |msg| match msg {
                 GtkMessage::ToggleLink { port_from, port_to } => toggle_link(port_from, port_to, &core, &registry, &state),
-                GtkMessage::Terminate => {
-                    // main thread requested stop
-                    is_stopped.set(true);
+                GtkMessage::Terminate | GtkMessage::Connect(_) => {
+                    loop_state.borrow_mut().handle_message(msg);
                     mainloop.quit();
                 }
             })
         });
 
-        let gtk_sender = gtk_sender.clone();
-        let _listener = core.add_listener_local()
-            .error(clone!(@strong mainloop, @strong gtk_sender, @strong is_stopped => move |id, _seq, res, message| {
-                if id != PW_ID_CORE {
-                    return;
-                }
+        let _listener = core
+            .add_listener_local()
+            .error(
+                clone!(@strong mainloop, @strong gtk_sender => move |id, _seq, res, message| {
+                    if id != PW_ID_CORE {
+                        return;
+                    }
 
-                if res == -libc::EPIPE {
-                    gtk_sender.send_blocking(PipewireMessage::Disconnected)
-                        .expect("Failed to send message");
-                    mainloop.quit();
-                } else {
-                    let serr = SpaResult::from_c(res).into_result().unwrap_err();
-                    error!("Pipewire Core received error {serr}: {message}");
-                }
-            }))
+                    if res == -libc::EPIPE {
+                        gtk_sender.send_blocking(PipewireMessage::Disconnected)
+                            .expect("Failed to send message");
+                        mainloop.quit();
+                    } else {
+                        let serr = SpaResult::from_c(res).into_result().unwrap_err();
+                        error!("Pipewire Core received error {serr}: {message}");
+                    }
+                }),
+            )
             .register();
 
         let _listener = registry
@@ -167,7 +195,7 @@ pub(super) fn thread_main(
                     }
                 }
             ))
-            .global_remove(clone!(@strong proxies, @strong state => move |id| {
+            .global_remove(clone!(@strong gtk_sender, @strong proxies, @strong state => move |id| {
                 if let Some(item) = state.borrow_mut().remove(id) {
                     gtk_sender.send_blocking(match item {
                         Item::Node { .. } => PipewireMessage::NodeRemoved {id},
@@ -187,6 +215,10 @@ pub(super) fn thread_main(
 
         mainloop.run();
         pw_receiver = receiver.deattach();
+
+        gtk_sender
+            .send_blocking(PipewireMessage::Disconnected)
+            .expect("Failed to send message");
     }
 }
 
