@@ -35,6 +35,9 @@ mod imp {
         #[property(get, set, construct_only)]
         pub graph: OnceCell<crate::ui::graph::GraphView>,
 
+        #[property(get, set, construct_only)]
+        pub connection_banner: OnceCell<adw::Banner>,
+
         pub pw_sender: OnceCell<PwSender<crate::GtkMessage>>,
         pub items: RefCell<HashMap<u32, glib::Object>>,
     }
@@ -66,7 +69,15 @@ mod imp {
                         PipewireMessage::NodeRemoved { id } => imp.remove_node(id),
                         PipewireMessage::PortRemoved { id, node_id } => imp.remove_port(id, node_id),
                         PipewireMessage::LinkRemoved { id } => imp.remove_link(id),
-                        PipewireMessage::Disconnected => imp.clear(),
+                        PipewireMessage::Connecting => {
+                            imp.obj().connection_banner().set_revealed(true);
+                        }
+                        PipewireMessage::Connected => {
+                            imp.obj().connection_banner().set_revealed(false);
+                        },
+                        PipewireMessage::Disconnected => {
+                            imp.clear();
+                        },
                     };
                     glib::ControlFlow::Continue
                 }
@@ -296,10 +307,14 @@ glib::wrapper! {
 impl GraphManager {
     pub fn new(
         graph: &GraphView,
+        connection_banner: &adw::Banner,
         sender: PwSender<GtkMessage>,
         receiver: glib::Receiver<PipewireMessage>,
     ) -> Self {
-        let res: Self = glib::Object::builder().property("graph", graph).build();
+        let res: Self = glib::Object::builder()
+            .property("graph", graph)
+            .property("connection-banner", connection_banner)
+            .build();
 
         res.imp().attach_receiver(receiver);
         assert!(

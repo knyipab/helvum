@@ -40,6 +40,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwBanner" id="connection_banner">
+            <property name="title" translatable="yes">Disconnected</property>
+            <property name="revealed">false</property>
+          </object>
+        </child>
+        <child>
           <object class="GtkScrolledWindow">
             <child>
               <object class="HelvumGraphView" id="graph">

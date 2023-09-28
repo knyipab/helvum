@@ -12,6 +12,9 @@ mod imp {
         #[template_child]
         pub header_bar: TemplateChild<adw::HeaderBar>,
         #[template_child]
+        #[property(type = adw::Banner, get = |_| self.connection_banner.clone())]
+        pub connection_banner: TemplateChild<adw::Banner>,
+        #[template_child]
         #[property(type = graph::GraphView, get = |_| self.graph.clone())]
         pub graph: TemplateChild<graph::GraphView>,
     }

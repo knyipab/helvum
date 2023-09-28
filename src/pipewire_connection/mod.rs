@@ -61,12 +61,20 @@ pub(super) fn thread_main(
     let mainloop = MainLoop::new().expect("Failed to create mainloop");
     let context = Rc::new(Context::new(&mainloop).expect("Failed to create context"));
     let is_stopped = Rc::new(Cell::new(false));
+    let mut is_connecting = false;
 
     while !is_stopped.get() {
         // Try to connect
         let core = match context.connect(None) {
             Ok(core) => Rc::new(core),
             Err(_) => {
+                if !is_connecting {
+                    is_connecting = true;
+                    gtk_sender
+                        .send(PipewireMessage::Connecting)
+                        .expect("Failed to send message");
+                }
+
                 // If connection is failed, try to connect again in 200ms
                 let interval = Some(Duration::from_millis(200));
 
@@ -92,6 +100,13 @@ pub(super) fn thread_main(
                 continue;
             }
         };
+
+        if is_connecting {
+            is_connecting = false;
+            gtk_sender
+                .send(PipewireMessage::Connected)
+                .expect("Failed to send message");
+        }
 
         let registry = Rc::new(core.get_registry().expect("Failed to get registry"));
 
