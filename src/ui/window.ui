@@ -21,9 +21,7 @@
           <object class="AdwHeaderBar" id="header_bar">
             <child type="end">
               <object class="GtkBox">
-                <style>
-                  <class name="toolbar"></class>
-                </style>
+                <property name="spacing">6</property>
                 <child>
                   <object class="HelvumZoomEntry">
                     <property name="zoomed-widget">graph</property>
