@@ -1,6 +1,6 @@
 [package]
 name = "helvum"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Tom Wagner <tom.a.wagner@protonmail.com>"]
 edition = "2021"
 rust-version = "1.70"
