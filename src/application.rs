@@ -31,6 +31,8 @@ static APP_ID: &str = "org.pipewire.Helvum";
 static VERSION: &str = env!("CARGO_PKG_VERSION");
 static AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 
+const DEFAULT_REMOTE_NAME: &str = "Default Remote";
+
 mod imp {
     use super::*;
 
@@ -145,9 +147,13 @@ mod imp {
                 Some("PATH"),
             );
 
+            let current_remote_label = obj.imp().window.current_remote_label();
             obj.connect_handle_local_options(clone!(@strong pw_sender => move |_, opts| {
                 match opts.lookup::<String>("socket") {
-                    Ok(p) => pw_sender.send(GtkMessage::Connect(p)).unwrap(),
+                    Ok(p) => {
+                        current_remote_label.set_label(p.as_deref().unwrap_or(DEFAULT_REMOTE_NAME));
+                        pw_sender.send(GtkMessage::Connect(p)).unwrap();
+                    },
                     Err(e) => error!("Invalid socket path: {e}"),
                 }
                 -1

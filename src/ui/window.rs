@@ -15,6 +15,9 @@ mod imp {
         #[property(type = adw::Banner, get = |_| self.connection_banner.clone())]
         pub connection_banner: TemplateChild<adw::Banner>,
         #[template_child]
+        #[property(type = gtk::Label, get = |_| self.current_remote_label.clone())]
+        pub current_remote_label: TemplateChild<gtk::Label>,
+        #[template_child]
         #[property(type = graph::GraphView, get = |_| self.graph.clone())]
         pub graph: TemplateChild<graph::GraphView>,
     }
