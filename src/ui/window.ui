@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <requires lib="gtk" version="4.0"/>
-  <requires lib="Adw" version="1.0"/>
+  <requires lib="Adw" version="1.4"/>
   <menu id="primary_menu">
     <section>
       <item>
@@ -15,9 +15,8 @@
     <property name="default-height">720</property>
     <property name="title">Helvum - Pipewire Patchbay</property>
     <child>
-      <object class="GtkBox">
-        <property name="orientation">vertical</property>
-        <child>
+      <object class="AdwToolbarView">
+        <child type="top">
           <object class="AdwHeaderBar" id="header_bar">
             <child type="end">
               <object class="GtkMenuButton">
@@ -27,13 +26,13 @@
             </child>
           </object>
         </child>
-        <child>
+        <child type="top">
           <object class="AdwBanner" id="connection_banner">
             <property name="title" translatable="yes">Disconnected</property>
             <property name="revealed">false</property>
           </object>
         </child>
-        <child>
+        <property name="content">
           <object class="GtkOverlay">
             <child>
               <object class="GtkScrolledWindow">
@@ -55,7 +54,7 @@
               </object>
             </child>
           </object>
-        </child>
+        </property>
       </object>
     </child>
   </template>

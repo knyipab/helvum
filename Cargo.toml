@@ -15,7 +15,7 @@ categories = ["gui", "multimedia"]
 
 [dependencies]
 pipewire = "0.7.1"
-adw = { version = "0.5", package = "libadwaita", features = ["v1_3"] }
+adw = { version = "0.5", package = "libadwaita", features = ["v1_4"] }
 glib = { version = "0.18", features = ["log"] }
 
 log = "0.4.11"
