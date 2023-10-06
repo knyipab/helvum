@@ -112,9 +112,12 @@ mod imp {
         }
 
         fn show_about_dialog(&self) {
+            let obj = &*self.obj();
+            let window = obj.active_window().unwrap();
             let authors: Vec<&str> = AUTHORS.split(':').collect();
 
             let about_window = adw::AboutWindow::builder()
+                .transient_for(&window)
                 .application_icon(APP_ID)
                 .application_name("Helvum")
                 .developer_name("Tom Wagner")
