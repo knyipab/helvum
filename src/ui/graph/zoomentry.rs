@@ -34,6 +34,7 @@ mod imp {
             menu.append(Some("200%"), Some("win.set-zoom(2.0)"));
             menu.append(Some("300%"), Some("win.set-zoom(3.0)"));
             let popover = gtk::PopoverMenu::from_model(Some(&menu));
+            popover.set_position(gtk::PositionType::Top);
 
             ZoomEntry {
                 graphview: Default::default(),

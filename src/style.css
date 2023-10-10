@@ -53,3 +53,20 @@ port-handle {
     border-radius: 50%;
     background-color: @media-type-unknown;
 }
+
+button.rounded {
+    padding: 6px;
+    border-radius: 9999px;
+}
+
+entry.rounded {
+    border-radius: 9999px;
+}
+
+entry.rounded > :first-child {
+    padding-left: 12px;
+}
+
+entry.rounded > :nth-child(2) {
+    padding-right: 12px;
+}

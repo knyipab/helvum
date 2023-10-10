@@ -20,19 +20,9 @@
         <child>
           <object class="AdwHeaderBar" id="header_bar">
             <child type="end">
-              <object class="GtkBox">
-                <property name="spacing">6</property>
-                <child>
-                  <object class="HelvumZoomEntry">
-                    <property name="zoomed-widget">graph</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkMenuButton">
-                    <property name="icon-name">open-menu-symbolic</property>
-                    <property name="menu-model">primary_menu</property>
-                  </object>
-                </child>
+              <object class="GtkMenuButton">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="menu-model">primary_menu</property>
               </object>
             </child>
           </object>
@@ -44,11 +34,24 @@
           </object>
         </child>
         <child>
-          <object class="GtkScrolledWindow">
+          <object class="GtkOverlay">
             <child>
-              <object class="HelvumGraphView" id="graph">
-                <property name="hexpand">true</property>
-                <property name="vexpand">true</property>
+              <object class="GtkScrolledWindow">
+                <child>
+                  <object class="HelvumGraphView" id="graph">
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="overlay">
+              <object class="HelvumZoomEntry">
+                <property name="zoomed-widget">graph</property>
+                <property name="halign">end</property>
+                <property name="valign">end</property>
+                <property name="margin-end">24</property>
+                <property name="margin-bottom">24</property>
               </object>
             </child>
           </object>
