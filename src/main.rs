@@ -39,6 +39,11 @@ pub enum PipewireMessage {
         name: String,
         node_type: Option<NodeType>,
     },
+    NodeNameChanged {
+        id: u32,
+        name: String,
+        media_name: String,
+    },
     PortAdded {
         id: u32,
         node_id: u32,

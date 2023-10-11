@@ -26,7 +26,9 @@ use std::{
 use adw::glib::{self, clone};
 use log::{debug, error, info, warn};
 use pipewire::{
+    keys,
     link::{Link, LinkChangeMask, LinkInfo, LinkListener, LinkState},
+    node::{Node, NodeInfo, NodeListener},
     port::{Port, PortChangeMask, PortInfo, PortListener},
     prelude::*,
     properties,
@@ -43,6 +45,10 @@ use crate::{GtkMessage, MediaType, NodeType, PipewireMessage};
 use state::{Item, State};
 
 enum ProxyItem {
+    Node {
+        _proxy: Node,
+        _listener: NodeListener,
+    },
     Port {
         proxy: Port,
         _listener: PortListener,
@@ -149,7 +155,7 @@ pub(super) fn thread_main(
             .add_listener_local()
             .global(clone!(@strong gtk_sender, @weak registry, @strong proxies, @strong state =>
                 move |global| match global.type_ {
-                    ObjectType::Node => handle_node(global, &gtk_sender, &state),
+                    ObjectType::Node => handle_node(global, &gtk_sender, &registry, &proxies, &state),
                     ObjectType::Port => handle_port(global, &gtk_sender, &registry, &proxies, &state),
                     ObjectType::Link => handle_link(global, &gtk_sender, &registry, &proxies, &state),
                     _ => {
@@ -180,10 +186,21 @@ pub(super) fn thread_main(
     }
 }
 
+/// Get the nicest possible name for the node, using a fallback chain of possible name attributes
+fn get_node_name(props: &ForeignDict) -> &str {
+    props
+        .get(&keys::NODE_DESCRIPTION)
+        .or_else(|| props.get(&keys::NODE_NICK))
+        .or_else(|| props.get(&keys::NODE_NAME))
+        .unwrap_or_default()
+}
+
 /// Handle a new node being added
 fn handle_node(
     node: &GlobalObject<ForeignDict>,
     sender: &glib::Sender<PipewireMessage>,
+    registry: &Rc<Registry>,
+    proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
     state: &Rc<RefCell<State>>,
 ) {
     let props = node
@@ -191,15 +208,7 @@ fn handle_node(
         .as_ref()
         .expect("Node object is missing properties");
 
-    // Get the nicest possible name for the node, using a fallback chain of possible name attributes.
-    let name = String::from(
-        props
-            .get("node.description")
-            .or_else(|| props.get("node.nick"))
-            .or_else(|| props.get("node.name"))
-            .unwrap_or_default(),
-    );
-
+    let name = get_node_name(props).to_string();
     let media_class = |class: &str| {
         if class.contains("Sink") || class.contains("Input") {
             Some(NodeType::Input)
@@ -230,6 +239,50 @@ fn handle_node(
             node_type,
         })
         .expect("Failed to send message");
+
+    let proxy: Node = registry.bind(node).expect("Failed to bind to node proxy");
+    let listener = proxy
+        .add_listener_local()
+        .info(clone!(@strong sender, @strong proxies => move |info| {
+            handle_node_info(info, &sender, &proxies);
+        }))
+        .register();
+
+    proxies.borrow_mut().insert(
+        node.id,
+        ProxyItem::Node {
+            _proxy: proxy,
+            _listener: listener,
+        },
+    );
+}
+
+fn handle_node_info(
+    info: &NodeInfo,
+    sender: &glib::Sender<PipewireMessage>,
+    proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
+) {
+    debug!("Received node info: {:?}", info);
+
+    let id = info.id();
+    let proxies = proxies.borrow();
+    let Some(ProxyItem::Node { .. }) = proxies.get(&id) else {
+        error!("Received info on unknown node with id {id}");
+        return;
+    };
+
+    let props = info.props().expect("NodeInfo object is missing properties");
+    if let Some(media_name) = props.get(&keys::MEDIA_NAME) {
+        let name = get_node_name(props).to_string();
+
+        sender
+            .send(PipewireMessage::NodeNameChanged {
+                id,
+                name,
+                media_name: media_name.to_string(),
+            })
+            .expect("Failed to send message");
+    }
 }
 
 /// Handle a new port being added

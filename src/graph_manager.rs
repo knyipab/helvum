@@ -59,6 +59,7 @@ mod imp {
                 move |msg| {
                     match msg {
                         PipewireMessage::NodeAdded { id, name, node_type } => imp.add_node(id, name.as_str(), node_type),
+                        PipewireMessage::NodeNameChanged { id, name, media_name } => imp.node_name_changed(id, &name, &media_name),
                         PipewireMessage::PortAdded { id, node_id, name, direction } => imp.add_port(id, name.as_str(), node_id, direction),
                         PipewireMessage::PortFormatChanged { id, media_type } => imp.port_media_type_changed(id, media_type),
                         PipewireMessage::LinkAdded {
@@ -93,6 +94,23 @@ mod imp {
             self.items.borrow_mut().insert(id, node.clone().upcast());
 
             self.obj().graph().add_node(node, node_type);
+        }
+
+        /// Update a node tooltip to the view.
+        fn node_name_changed(&self, id: u32, node_name: &str, media_name: &str) {
+            let items = self.items.borrow();
+
+            let Some(node) = items.get(&id) else {
+                log::warn!("Node (id: {id}) for changed name not found in graph manager");
+                return;
+            };
+            let Some(node) = node.dynamic_cast_ref::<graph::Node>() else {
+                log::warn!("Graph Manager item under node (id: {id}) is not a node");
+                return;
+            };
+
+            node.set_node_name(node_name);
+            node.set_media_name(media_name);
         }
 
         /// Remove the node with the specified id from the view.

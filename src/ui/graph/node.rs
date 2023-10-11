@@ -34,15 +34,26 @@ mod imp {
         #[property(get, set, construct_only)]
         pub(super) pipewire_id: Cell<u32>,
         #[property(
-            name = "name", type = String,
-            get = |this: &Self| this.label.text().to_string(),
+            name = "node-name", type = String,
+            get = |this: &Self| this.node_name.text().to_string(),
             set = |this: &Self, val| {
-                this.label.set_text(val);
-                this.label.set_tooltip_text(Some(val));
+                this.node_name.set_text(val);
+                this.node_name.set_tooltip_text(Some(val));
             }
         )]
         #[template_child]
-        pub(super) label: TemplateChild<gtk::Label>,
+        pub(super) node_name: TemplateChild<gtk::Label>,
+        #[property(
+            name = "media-name", type = String,
+            get = |this: &Self| this.media_name.text().to_string(),
+            set = |this: &Self, val| {
+                this.media_name.set_text(val);
+                this.media_name.set_tooltip_text(Some(val));
+                this.media_name.set_visible(!val.is_empty());
+            }
+        )]
+        #[template_child]
+        pub(super) media_name: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) separator: TemplateChild<gtk::Separator>,
         #[template_child]
@@ -75,7 +86,7 @@ mod imp {
             self.parent_constructed();
 
             // Display a grab cursor when the mouse is over the label so the user knows the node can be dragged.
-            self.label
+            self.node_name
                 .set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
         }
 
@@ -141,7 +152,7 @@ glib::wrapper! {
 impl Node {
     pub fn new(name: &str, pipewire_id: u32) -> Self {
         glib::Object::builder()
-            .property("name", name)
+            .property("node-name", name)
             .property("pipewire-id", pipewire_id)
             .build()
     }

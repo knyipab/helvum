@@ -9,14 +9,36 @@
       <object class="GtkBox">
         <property name="orientation">vertical</property>
         <child>
-          <object class="GtkLabel" id="label">
+          <object class="GtkBox">
             <style>
-              <class name="heading"></class>
+              <class name="node-title"></class>
             </style>
-            <property name="wrap">true</property>
-            <property name="ellipsize">PANGO_ELLIPSIZE_END</property>
-            <property name="lines">2</property>
-            <property name="max-width-chars">20</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">1</property>
+            <child>
+              <object class="GtkLabel" id="node_name">
+                <style>
+                  <class name="heading"></class>
+                </style>
+                <property name="wrap">true</property>
+                <property name="ellipsize">PANGO_ELLIPSIZE_END</property>
+                <property name="lines">2</property>
+                <property name="max-width-chars">20</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="media_name">
+                <style>
+                  <class name="dim-label"></class>
+                  <class name="caption"></class>
+                </style>
+                <property name="visible">false</property>
+                <property name="wrap">true</property>
+                <property name="ellipsize">PANGO_ELLIPSIZE_END</property>
+                <property name="lines">2</property>
+                <property name="max-width-chars">20</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>

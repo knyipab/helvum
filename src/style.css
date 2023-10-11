@@ -41,7 +41,7 @@ node {
 	background-color: @headerbar_bg_color;
 }
 
-node label.heading {
+node .node-title {
 	padding: 4px 7px;
 }
 
