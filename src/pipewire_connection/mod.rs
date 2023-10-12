@@ -65,7 +65,9 @@ pub(super) fn thread_main(
 
     while !is_stopped.get() {
         // Try to connect
-        let core = match context.connect(None) {
+        let core = match context.connect(Some(properties! {
+            "media.category" => "Manager"
+        })) {
             Ok(core) => Rc::new(core),
             Err(_) => {
                 if !is_connecting {
