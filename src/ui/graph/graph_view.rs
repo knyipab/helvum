@@ -93,6 +93,9 @@ mod imp {
         // Memorized data for an in-progress zoom gesture
         pub zoom_gesture_initial_zoom: Cell<Option<f64>>,
         pub zoom_gesture_anchor: Cell<Option<(f64, f64)>>,
+
+        // This keeps track of an ongoing move view gesture.
+        pub move_view_state: Cell<(f64, f64)>,
     }
 
     impl Default for GraphView {
@@ -108,6 +111,7 @@ mod imp {
                 port_drag_cursor: Cell::new(Point::new(0.0, 0.0)),
                 zoom_gesture_initial_zoom: Default::default(),
                 zoom_gesture_anchor: Default::default(),
+                move_view_state: Default::default(),
             }
         }
     }
@@ -136,6 +140,7 @@ mod imp {
             self.setup_port_drag_and_drop();
             self.setup_scroll_zooming();
             self.setup_zoom_gesture();
+            self.setup_move_view();
         }
 
         fn dispose(&self) {
@@ -463,6 +468,48 @@ mod imp {
                 widget.set_zoom_factor(initial_zoom * delta, gesture.bounding_box_center());
             });
             self.obj().add_controller(zoom_gesture);
+        }
+
+        fn setup_move_view(&self) {
+            let drag_controller = gtk::GestureDrag::new();
+
+            drag_controller.set_button(gtk::gdk::BUTTON_MIDDLE);
+
+            // TODO: set `all-scroll` cursor while dragging view
+
+            drag_controller.connect_drag_begin(|drag_controller, _, _| {
+                let widget = drag_controller
+                    .widget()
+                    .downcast::<super::GraphView>()
+                    .unwrap();
+
+                widget.imp().move_view_state.set((0.0, 0.0));
+            });
+
+            drag_controller.connect_drag_update(|drag_controller, x, y| {
+                let widget = drag_controller
+                    .widget()
+                    .downcast::<super::GraphView>()
+                    .unwrap();
+
+                let imp = widget.imp();
+                let state = imp.move_view_state.replace((x, y));
+                let delta_x = state.0 - x;
+                let delta_y = state.1 - y;
+
+                let hadjustment_ref = imp.hadjustment.borrow();
+                let vadjustment_ref = imp.vadjustment.borrow();
+                let hadjustment = hadjustment_ref.as_ref().unwrap();
+                let vadjustment = vadjustment_ref.as_ref().unwrap();
+
+                let new_hadjustment = hadjustment.value() + delta_x;
+                let new_vadjustment = vadjustment.value() + delta_y;
+
+                hadjustment.set_value(new_hadjustment);
+                vadjustment.set_value(new_vadjustment);
+            });
+
+            self.obj().add_controller(drag_controller);
         }
 
         fn draw_link(
