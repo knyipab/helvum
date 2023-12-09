@@ -85,6 +85,9 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
+            // Force left-to-right direction for the ports grid to avoid messed up UI when defaulting to right-to-left
+            self.port_grid.set_direction(gtk::TextDirection::Ltr);
+
             // Display a grab cursor when the mouse is over the label so the user knows the node can be dragged.
             self.node_name
                 .set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());

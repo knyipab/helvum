@@ -101,6 +101,9 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
+            // Force left-to-right direction for the ports grid to avoid messed up UI when defaulting to right-to-left
+            self.obj().set_direction(gtk::TextDirection::Ltr);
+
             // Display a grab cursor when the mouse is over the port so the user knows it can be dragged to another port.
             self.obj()
                 .set_cursor(gtk::gdk::Cursor::from_name("grab", None).as_ref());
