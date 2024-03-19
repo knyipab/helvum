@@ -130,7 +130,13 @@ mod imp {
         }
 
         /// Add a new port to the view.
-        fn add_port(&self, id: u32, name: &str, node_id: u32, direction: pipewire::spa::Direction) {
+        fn add_port(
+            &self,
+            id: u32,
+            name: &str,
+            node_id: u32,
+            direction: pipewire::spa::utils::Direction,
+        ) {
             log::info!("Adding port to graph: id {}", id);
 
             let mut items = self.items.borrow_mut();
@@ -273,7 +279,11 @@ mod imp {
             link.set_active(active);
         }
 
-        fn link_format_changed(&self, id: u32, media_type: pipewire::spa::format::MediaType) {
+        fn link_format_changed(
+            &self,
+            id: u32,
+            media_type: pipewire::spa::param::format::MediaType,
+        ) {
             let items = self.items.borrow();
 
             let Some(link) = items.get(&id) else {

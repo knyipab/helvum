@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use adw::{glib, gtk, prelude::*, subclass::prelude::*};
-use pipewire::spa::Direction;
+use pipewire::spa::utils::Direction;
 
 use super::Port;
 

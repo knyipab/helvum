@@ -20,7 +20,7 @@ mod pipewire_connection;
 mod ui;
 
 use adw::{gtk, prelude::*};
-use pipewire::spa::{format::MediaType, Direction};
+use pipewire::spa::{param::format::MediaType, utils::Direction};
 
 /// Messages sent by the GTK thread to notify the pipewire thread.
 #[derive(Debug, Clone)]

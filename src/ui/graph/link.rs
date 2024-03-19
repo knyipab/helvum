@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use adw::{glib, prelude::*, subclass::prelude::*};
-use pipewire::spa::format::MediaType;
+use pipewire::spa::param::format::MediaType;
 
 use super::Port;
 

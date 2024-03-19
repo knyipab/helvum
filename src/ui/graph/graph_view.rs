@@ -42,8 +42,8 @@ mod imp {
     use adw::gtk::gdk::{self};
     use log::warn;
     use once_cell::sync::Lazy;
-    use pipewire::spa::format::MediaType;
-    use pipewire::spa::Direction;
+    use pipewire::spa::param::format::MediaType;
+    use pipewire::spa::utils::Direction;
 
     pub struct Colors {
         audio: gdk::RGBA,

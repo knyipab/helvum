@@ -26,19 +26,21 @@ use std::{
 use adw::glib::{self, clone};
 use log::{debug, error, info, warn};
 use pipewire::{
+    context::Context,
+    core::{Core, PW_ID_CORE},
     keys,
-    link::{Link, LinkChangeMask, LinkInfo, LinkListener, LinkState},
-    node::{Node, NodeInfo, NodeListener},
-    port::{Port, PortChangeMask, PortInfo, PortListener},
-    prelude::*,
-    properties,
+    link::{Link, LinkChangeMask, LinkInfoRef, LinkListener, LinkState},
+    main_loop::MainLoop,
+    node::{Node, NodeInfoRef, NodeListener},
+    port::{Port, PortChangeMask, PortInfoRef, PortListener},
+    properties::properties,
     registry::{GlobalObject, Registry},
     spa::{
         param::{ParamInfoFlags, ParamType},
-        ForeignDict, SpaResult,
+        utils::dict::DictRef,
+        utils::result::SpaResult,
     },
     types::ObjectType,
-    Context, Core, MainLoop,
 };
 
 use crate::{GtkMessage, MediaType, NodeType, PipewireMessage};
@@ -64,7 +66,7 @@ pub(super) fn thread_main(
     gtk_sender: glib::Sender<PipewireMessage>,
     mut pw_receiver: pipewire::channel::Receiver<GtkMessage>,
 ) {
-    let mainloop = MainLoop::new().expect("Failed to create mainloop");
+    let mainloop = MainLoop::new(None).expect("Failed to create mainloop");
     let context = Rc::new(Context::new(&mainloop).expect("Failed to create context"));
     let is_stopped = Rc::new(Cell::new(false));
     let mut is_connecting = false;
@@ -86,13 +88,15 @@ pub(super) fn thread_main(
                 // If connection is failed, try to connect again in 200ms
                 let interval = Some(Duration::from_millis(200));
 
-                let timer = mainloop.add_timer(clone!(@strong mainloop => move |_| {
-                    mainloop.quit();
-                }));
+                let timer = mainloop
+                    .loop_()
+                    .add_timer(clone!(@strong mainloop => move |_| {
+                        mainloop.quit();
+                    }));
 
                 timer.update_timer(interval, None).into_result().unwrap();
 
-                let receiver = pw_receiver.attach(&mainloop, {
+                let receiver = pw_receiver.attach(mainloop.loop_(), {
                     clone!(@strong mainloop, @strong is_stopped => move |msg|
                         if let GtkMessage::Terminate = msg {
                             // main thread requested stop
@@ -122,7 +126,7 @@ pub(super) fn thread_main(
         let proxies = Rc::new(RefCell::new(HashMap::new()));
         let state = Rc::new(RefCell::new(State::new()));
 
-        let receiver = pw_receiver.attach(&mainloop, {
+        let receiver = pw_receiver.attach(mainloop.loop_(), {
             clone!(@strong mainloop, @weak core, @weak registry, @strong state, @strong is_stopped => move |msg| match msg {
                 GtkMessage::ToggleLink { port_from, port_to } => toggle_link(port_from, port_to, &core, &registry, &state),
                 GtkMessage::Terminate => {
@@ -136,7 +140,7 @@ pub(super) fn thread_main(
         let gtk_sender = gtk_sender.clone();
         let _listener = core.add_listener_local()
             .error(clone!(@strong mainloop, @strong gtk_sender, @strong is_stopped => move |id, _seq, res, message| {
-                if id != pipewire::PW_ID_CORE {
+                if id != PW_ID_CORE {
                     return;
                 }
 
@@ -187,7 +191,7 @@ pub(super) fn thread_main(
 }
 
 /// Get the nicest possible name for the node, using a fallback chain of possible name attributes
-fn get_node_name(props: &ForeignDict) -> &str {
+fn get_node_name(props: &DictRef) -> &str {
     props
         .get(&keys::NODE_DESCRIPTION)
         .or_else(|| props.get(&keys::NODE_NICK))
@@ -197,7 +201,7 @@ fn get_node_name(props: &ForeignDict) -> &str {
 
 /// Handle a new node being added
 fn handle_node(
-    node: &GlobalObject<ForeignDict>,
+    node: &GlobalObject<&DictRef>,
     sender: &glib::Sender<PipewireMessage>,
     registry: &Rc<Registry>,
     proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
@@ -258,7 +262,7 @@ fn handle_node(
 }
 
 fn handle_node_info(
-    info: &NodeInfo,
+    info: &NodeInfoRef,
     sender: &glib::Sender<PipewireMessage>,
     proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
 ) {
@@ -287,7 +291,7 @@ fn handle_node_info(
 
 /// Handle a new port being added
 fn handle_port(
-    port: &GlobalObject<ForeignDict>,
+    port: &GlobalObject<&DictRef>,
     sender: &glib::Sender<PipewireMessage>,
     registry: &Rc<Registry>,
     proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
@@ -319,7 +323,7 @@ fn handle_port(
 }
 
 fn handle_port_info(
-    info: &PortInfo,
+    info: &PortInfoRef,
     proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
     state: &Rc<RefCell<State>>,
     sender: &glib::Sender<PipewireMessage>,
@@ -393,7 +397,7 @@ fn handle_port_enum_format(
 
 /// Handle a new link being added
 fn handle_link(
-    link: &GlobalObject<ForeignDict>,
+    link: &GlobalObject<&DictRef>,
     sender: &glib::Sender<PipewireMessage>,
     registry: &Rc<Registry>,
     proxies: &Rc<RefCell<HashMap<u32, ProxyItem>>>,
@@ -422,7 +426,7 @@ fn handle_link(
 }
 
 fn handle_link_info(
-    info: &LinkInfo,
+    info: &LinkInfoRef,
     state: &Rc<RefCell<State>>,
     sender: &glib::Sender<PipewireMessage>,
 ) {
@@ -495,7 +499,7 @@ fn toggle_link(
             .get_node_of_port(port_to)
             .expect("Requested port not in state");
 
-        if let Err(e) = core.create_object::<Link, _>(
+        if let Err(e) = core.create_object::<Link>(
             "link-factory",
             &properties! {
                 "link.output.node" => node_from.to_string(),
@@ -510,7 +514,7 @@ fn toggle_link(
     }
 }
 
-fn get_link_media_type(link_info: &LinkInfo) -> MediaType {
+fn get_link_media_type(link_info: &LinkInfoRef) -> MediaType {
     let media_type = link_info
         .format()
         .and_then(|format| pipewire::spa::param::format_utils::parse_format(format).ok())

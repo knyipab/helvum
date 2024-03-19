@@ -21,7 +21,7 @@ use adw::{
     prelude::*,
     subclass::prelude::*,
 };
-use pipewire::spa::Direction;
+use pipewire::spa::utils::Direction;
 
 use super::PortHandle;
 
@@ -31,7 +31,7 @@ mod imp {
     use std::cell::Cell;
 
     use once_cell::{sync::Lazy, unsync::OnceCell};
-    use pipewire::spa::{format::MediaType, Direction};
+    use pipewire::spa::{param::format::MediaType, utils::Direction};
 
     /// Graphical representation of a pipewire port.
     #[derive(gtk::CompositeTemplate, glib::Properties)]
