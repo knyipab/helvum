@@ -16,7 +16,7 @@
 
 use adw::{
     gio,
-    glib::{self, clone, Receiver},
+    glib::{self, clone},
     gtk,
     prelude::*,
     subclass::prelude::*,
@@ -33,8 +33,9 @@ static AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 mod imp {
     use super::*;
 
+    use std::cell::OnceCell;
+
     use adw::subclass::prelude::AdwApplicationImpl;
-    use once_cell::unsync::OnceCell;
 
     #[derive(Default)]
     pub struct Application {
@@ -143,7 +144,7 @@ impl Application {
     /// Create the view.
     /// This will set up the entire user interface and prepare it for being run.
     pub(super) fn new(
-        gtk_receiver: Receiver<PipewireMessage>,
+        gtk_receiver: async_channel::Receiver<PipewireMessage>,
         pw_sender: Sender<GtkMessage>,
     ) -> Self {
         let app: Application = glib::Object::builder()

@@ -23,9 +23,7 @@ use crate::{ui::graph::GraphView, GtkMessage, PipewireMessage};
 mod imp {
     use super::*;
 
-    use std::{cell::RefCell, collections::HashMap};
-
-    use once_cell::unsync::OnceCell;
+    use std::{cell::OnceCell, cell::RefCell, collections::HashMap};
 
     use crate::{ui::graph, MediaType, NodeType};
 
@@ -53,36 +51,58 @@ mod imp {
     impl ObjectImpl for GraphManager {}
 
     impl GraphManager {
-        pub fn attach_receiver(&self, receiver: glib::Receiver<crate::PipewireMessage>) {
-            receiver.attach(None, glib::clone!(
-                @weak self as imp => @default-return glib::ControlFlow::Continue,
-                move |msg| {
-                    match msg {
-                        PipewireMessage::NodeAdded { id, name, node_type } => imp.add_node(id, name.as_str(), node_type),
-                        PipewireMessage::NodeNameChanged { id, name, media_name } => imp.node_name_changed(id, &name, &media_name),
-                        PipewireMessage::PortAdded { id, node_id, name, direction } => imp.add_port(id, name.as_str(), node_id, direction),
-                        PipewireMessage::PortFormatChanged { id, media_type } => imp.port_media_type_changed(id, media_type),
-                        PipewireMessage::LinkAdded {
-                            id, port_from, port_to, active, media_type
-                        } => imp.add_link(id, port_from, port_to, active, media_type),
-                        PipewireMessage::LinkStateChanged { id, active } => imp.link_state_changed(id, active),
-                        PipewireMessage::LinkFormatChanged { id, media_type } => imp.link_format_changed(id, media_type),
-                        PipewireMessage::NodeRemoved { id } => imp.remove_node(id),
-                        PipewireMessage::PortRemoved { id, node_id } => imp.remove_port(id, node_id),
-                        PipewireMessage::LinkRemoved { id } => imp.remove_link(id),
-                        PipewireMessage::Connecting => {
-                            imp.obj().connection_banner().set_revealed(true);
-                        }
-                        PipewireMessage::Connected => {
-                            imp.obj().connection_banner().set_revealed(false);
-                        },
-                        PipewireMessage::Disconnected => {
-                            imp.clear();
-                        },
-                    };
-                    glib::ControlFlow::Continue
-                }
-            ));
+        pub async fn receive(&self, receiver: async_channel::Receiver<crate::PipewireMessage>) {
+            loop {
+                let Ok(msg) = receiver.recv().await else {
+                    continue;
+                };
+                match msg {
+                    PipewireMessage::NodeAdded {
+                        id,
+                        name,
+                        node_type,
+                    } => self.add_node(id, name.as_str(), node_type),
+                    PipewireMessage::NodeNameChanged {
+                        id,
+                        name,
+                        media_name,
+                    } => self.node_name_changed(id, &name, &media_name),
+                    PipewireMessage::PortAdded {
+                        id,
+                        node_id,
+                        name,
+                        direction,
+                    } => self.add_port(id, name.as_str(), node_id, direction),
+                    PipewireMessage::PortFormatChanged { id, media_type } => {
+                        self.port_media_type_changed(id, media_type)
+                    }
+                    PipewireMessage::LinkAdded {
+                        id,
+                        port_from,
+                        port_to,
+                        active,
+                        media_type,
+                    } => self.add_link(id, port_from, port_to, active, media_type),
+                    PipewireMessage::LinkStateChanged { id, active } => {
+                        self.link_state_changed(id, active)
+                    }
+                    PipewireMessage::LinkFormatChanged { id, media_type } => {
+                        self.link_format_changed(id, media_type)
+                    }
+                    PipewireMessage::NodeRemoved { id } => self.remove_node(id),
+                    PipewireMessage::PortRemoved { id, node_id } => self.remove_port(id, node_id),
+                    PipewireMessage::LinkRemoved { id } => self.remove_link(id),
+                    PipewireMessage::Connecting => {
+                        self.obj().connection_banner().set_revealed(true);
+                    }
+                    PipewireMessage::Connected => {
+                        self.obj().connection_banner().set_revealed(false);
+                    }
+                    PipewireMessage::Disconnected => {
+                        self.clear();
+                    }
+                };
+            }
         }
 
         /// Add a new node to the view.
@@ -332,19 +352,23 @@ glib::wrapper! {
     pub struct GraphManager(ObjectSubclass<imp::GraphManager>);
 }
 
+async fn receive(graph_manager: GraphManager, receiver: async_channel::Receiver<PipewireMessage>) {
+    graph_manager.imp().receive(receiver).await
+}
+
 impl GraphManager {
     pub fn new(
         graph: &GraphView,
         connection_banner: &adw::Banner,
         sender: PwSender<GtkMessage>,
-        receiver: glib::Receiver<PipewireMessage>,
+        receiver: async_channel::Receiver<PipewireMessage>,
     ) -> Self {
         let res: Self = glib::Object::builder()
             .property("graph", graph)
             .property("connection-banner", connection_banner)
             .build();
 
-        res.imp().attach_receiver(receiver);
+        glib::MainContext::default().spawn_local(receive(res.clone(), receiver));
         assert!(
             res.imp().pw_sender.set(sender).is_ok(),
             "Should be able to set pw_sender)"

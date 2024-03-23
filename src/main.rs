@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start the pipewire thread with channels in both directions.
 
-    let (gtk_sender, gtk_receiver) = glib::MainContext::channel(glib::Priority::DEFAULT);
+    let (gtk_sender, gtk_receiver) = async_channel::unbounded();
     let (pw_sender, pw_receiver) = pipewire::channel::channel();
     let pw_thread =
         std::thread::spawn(move || pipewire_connection::thread_main(gtk_sender, pw_receiver));
