@@ -561,6 +561,7 @@ version = "0.5.1"
 dependencies = [
  "async-channel",
  "glib",
+ "gtk4",
  "libadwaita",
  "libc",
  "log",

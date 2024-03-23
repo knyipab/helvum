@@ -11,7 +11,7 @@ gnome = import('gnome')
 base_id = 'org.pipewire.Helvum'
 
 dependency('glib-2.0',     version: '>= 2.66')
-dependency('gtk4',         version: '>= 4.4.0')
+dependency('gtk4',         version: '>= 4.14.0')
 dependency('libadwaita-1', version: '>= 1.4')
 dependency('libpipewire-0.3')
 
