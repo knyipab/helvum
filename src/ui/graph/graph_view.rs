@@ -512,38 +512,24 @@ mod imp {
             self.obj().add_controller(drag_controller);
         }
 
-        fn draw_link(
+        fn snapshot_link(
             &self,
-            link_cr: &cairo::Context,
+            snapshot: &gtk::Snapshot,
             output_anchor: &Point,
             input_anchor: &Point,
             active: bool,
             color: &gdk::RGBA,
         ) {
-            let output_x: f64 = output_anchor.x().into();
-            let output_y: f64 = output_anchor.y().into();
-            let input_x: f64 = input_anchor.x().into();
-            let input_y: f64 = input_anchor.y().into();
-
-            // Use dashed line for inactive links, full line otherwise.
-            if active {
-                link_cr.set_dash(&[], 0.0);
-            } else {
-                link_cr.set_dash(&[10.0, 5.0], 0.0);
-            }
-
-            link_cr.set_source_rgba(
-                color.red().into(),
-                color.green().into(),
-                color.blue().into(),
-                color.alpha().into(),
-            );
+            let output_x = output_anchor.x();
+            let output_y = output_anchor.y();
+            let input_x = input_anchor.x();
+            let input_y = input_anchor.y();
 
             // If the output port is farther right than the input port and they have
             // a similar y coordinate, apply a y offset to the control points
             // so that the curve sticks out a bit.
             let y_control_offset = if output_x > input_x {
-                f64::max(0.0, 25.0 - (output_y - input_y).abs())
+                f32::max(0.0, 25.0 - (output_y - input_y).abs())
             } else {
                 0.0
             };
@@ -551,9 +537,10 @@ mod imp {
             // Place curve control offset by half the x distance between the two points.
             // This makes the curve scale well for varying distances between the two ports,
             // especially when the output port is farther right than the input port.
-            let half_x_dist = f64::abs(output_x - input_x) / 2.0;
-            link_cr.move_to(output_x, output_y);
-            link_cr.curve_to(
+            let half_x_dist = f32::abs(output_x - input_x) / 2.0;
+            let path_builder = gsk::PathBuilder::new();
+            path_builder.move_to(output_x, output_y);
+            path_builder.cubic_to(
                 output_x + half_x_dist,
                 output_y - y_control_offset,
                 input_x - half_x_dist,
@@ -561,13 +548,20 @@ mod imp {
                 input_x,
                 input_y,
             );
+            let path = path_builder.to_path();
 
-            if let Err(e) = link_cr.stroke() {
-                warn!("Failed to draw graphview links: {}", e);
-            };
+            let stroke = gsk::Stroke::new(2.0 * (self.zoom_factor.get() as f32));
+            // Use dashed line for inactive links, full line otherwise.
+            if active {
+                stroke.set_dash(&[]);
+            } else {
+                stroke.set_dash(&[10.0, 5.0]);
+            }
+
+            snapshot.append_stroke(&path, &stroke, color);
         }
 
-        fn draw_dragged_link(&self, port: &Port, link_cr: &cairo::Context, colors: &Colors) {
+        fn snapshot_dragged_link(&self, snapshot: &gtk::Snapshot, port: &Port, colors: &Colors) {
             let Some(port_anchor) = port.compute_point(&*self.obj(), &port.link_anchor()) else {
                 return;
             };
@@ -597,21 +591,10 @@ mod imp {
 
             let color = &colors.color_for_media_type(MediaType::from_raw(port.media_type()));
 
-            self.draw_link(link_cr, output_anchor, input_anchor, false, color);
+            self.snapshot_link(snapshot, output_anchor, input_anchor, false, color);
         }
 
         fn snapshot_links(&self, widget: &super::GraphView, snapshot: &gtk::Snapshot) {
-            let alloc = widget.allocation();
-
-            let link_cr = snapshot.append_cairo(&graphene::Rect::new(
-                0.0,
-                0.0,
-                alloc.width() as f32,
-                alloc.height() as f32,
-            ));
-
-            link_cr.set_line_width(2.0 * self.zoom_factor.get());
-
             let colors = Colors {
                 audio: widget
                     .style_context()
@@ -640,8 +623,8 @@ mod imp {
                     continue;
                 };
 
-                self.draw_link(
-                    &link_cr,
+                self.snapshot_link(
+                    snapshot,
                     &output_anchor,
                     &input_anchor,
                     link.active(),
@@ -650,7 +633,7 @@ mod imp {
             }
 
             if let Some(port) = self.dragged_port.upgrade() {
-                self.draw_dragged_link(&port, &link_cr, &colors);
+                self.snapshot_dragged_link(&snapshot, &port, &colors);
             }
         }
 
